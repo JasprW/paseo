@@ -40,6 +40,8 @@ export class DaemonStartService {
         listenAddress,
         serverId,
         hostname: daemon.hostname,
+        preferHost: true,
+        waitForOnline: true,
       });
       return { ok: true };
     } catch (error) {

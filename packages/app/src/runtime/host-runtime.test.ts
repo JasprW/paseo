@@ -1750,6 +1750,36 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
+  it("promotes the desktop daemon host when adding a listen connection", async () => {
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => ({
+          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: host.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+    store.syncHosts([
+      makeHost({ serverId: "srv_cached_next", label: "cached next" }),
+      makeHost({ serverId: "srv_stable", label: "stable" }),
+    ]);
+
+    await store.upsertConnectionFromListen({
+      listenAddress: "127.0.0.1:6767",
+      serverId: "srv_stable",
+      hostname: "bofan-laptop",
+      preferHost: true,
+      waitForOnline: true,
+    });
+
+    expect(store.getHosts()[0]?.serverId).toBe("srv_stable");
+
+    store.syncHosts([]);
+  });
+
   it("probeAndUpsertConnection learns the real server id before storing a direct host", async () => {
     const connection: HostConnection = {
       id: "direct:lan:6767",

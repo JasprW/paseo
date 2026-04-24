@@ -7,6 +7,8 @@ interface RecordedUpsert {
   listenAddress: string;
   serverId: string;
   hostname: string | null;
+  preferHost?: boolean;
+  waitForOnline?: boolean;
 }
 
 function createFakeStore(): {
@@ -50,7 +52,13 @@ describe("DaemonStartService", () => {
 
     expect(result).toEqual({ ok: true });
     expect(fake.upserts).toEqual([
-      { listenAddress: "127.0.0.1:6767", serverId: "srv_desktop", hostname: "desktop" },
+      {
+        listenAddress: "127.0.0.1:6767",
+        serverId: "srv_desktop",
+        hostname: "desktop",
+        preferHost: true,
+        waitForOnline: true,
+      },
     ]);
     expect(service.getLastError()).toBeNull();
     expect(service.isRunning()).toBe(false);

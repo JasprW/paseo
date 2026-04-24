@@ -594,20 +594,13 @@ function useAnyOnlineHostServerId(serverIds: string[]): string | null {
   return useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () => {
-      let firstOnlineServerId: string | null = null;
-      let firstOnlineAt: string | null = null;
       for (const serverId of serverIds) {
         const snapshot = runtime.getSnapshot(serverId);
-        const lastOnlineAt = snapshot?.lastOnlineAt ?? null;
-        if (!isHostRuntimeConnected(snapshot) || !lastOnlineAt) {
-          continue;
-        }
-        if (!firstOnlineAt || lastOnlineAt < firstOnlineAt) {
-          firstOnlineAt = lastOnlineAt;
-          firstOnlineServerId = serverId;
+        if (isHostRuntimeConnected(snapshot)) {
+          return serverId;
         }
       }
-      return firstOnlineServerId;
+      return null;
     },
     () => null,
   );

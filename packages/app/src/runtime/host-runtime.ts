@@ -1572,6 +1572,9 @@ export class HostRuntimeStore {
     listenAddress: string;
     serverId: string;
     hostname: string | null;
+    preferHost?: boolean;
+    waitForOnline?: boolean;
+    timeoutMs?: number;
   }): Promise<HostProfile> {
     const normalizedListenAddress = input.listenAddress.trim();
     const serverId = input.serverId.trim();
@@ -1582,11 +1585,41 @@ export class HostRuntimeStore {
     if (!serverId) {
       throw new Error("Desktop daemon did not return a server id.");
     }
-    return this.upsertHostConnection({
+    const profile = await this.upsertHostConnection({
       serverId,
       label: input.hostname ?? undefined,
       connection,
     });
+    if (input.preferHost) {
+      await this.promoteHost(serverId);
+    }
+
+    if (input.waitForOnline) {
+      await this.waitForConnectionOnline({
+        serverId,
+        connectionId: connection.id,
+        timeoutMs: input.timeoutMs,
+      });
+    }
+
+    return profile;
+  }
+
+  async promoteHost(serverId: string): Promise<void> {
+    const normalizedServerId = serverId.trim();
+    const index = this.hosts.findIndex((host) => host.serverId === normalizedServerId);
+    if (index <= 0) {
+      return;
+    }
+
+    const next = [...this.hosts];
+    const [host] = next.splice(index, 1);
+    if (!host) {
+      return;
+    }
+    next.unshift({ ...host, updatedAt: new Date().toISOString() });
+    this.setHostsAndSync(next);
+    void this.persistHosts();
   }
 
   async renameHost(serverId: string, label: string): Promise<void> {
