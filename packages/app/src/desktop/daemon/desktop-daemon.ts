@@ -26,11 +26,17 @@ export interface DesktopPairingOffer {
   qr: string | null;
 }
 
-export interface LocalTransportTarget {
-  [key: string]: unknown;
-  transportType: "socket" | "pipe";
-  transportPath: string;
-}
+export type LocalTransportTarget =
+  | {
+      [key: string]: unknown;
+      transportType: "socket" | "pipe";
+      transportPath: string;
+    }
+  | {
+      [key: string]: unknown;
+      transportType: "tcp";
+      endpoint: string;
+    };
 
 interface LocalTransportEventPayload {
   sessionId: string;

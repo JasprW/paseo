@@ -1,0 +1,32 @@
+[package]
+name = "paseo_next"
+version = "0.1.62"
+description = "Paseo Next desktop app"
+authors = ["Mohamed Boudra <hello@moboudra.com>"]
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/getpaseo/paseo.git"
+edition = "2021"
+
+[[bin]]
+name = "paseo-next"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.5.1", features = [] }
+
+[dependencies]
+base64 = "0.22"
+futures-util = "0.3"
+libc = "0.2"
+open = "5"
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.10.1", features = ["macos-private-api"] }
+tokio = { version = "1", features = ["sync"] }
+tokio-tungstenite = "0.28"
+url = "2"
+
+[target."cfg(target_os = \"macos\")".dependencies]
+cocoa = "0.26"
+objc = "0.2"

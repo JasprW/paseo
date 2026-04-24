@@ -29,7 +29,11 @@ function decodeBase64ToBytes(base64: string): Uint8Array {
 
 export function buildLocalDaemonTransportUrl(target: LocalTransportTarget): string {
   const url = new URL(`${LOCAL_TRANSPORT_SCHEME}//${target.transportType}`);
-  url.searchParams.set("path", target.transportPath);
+  if (target.transportType === "tcp") {
+    url.searchParams.set("endpoint", target.endpoint);
+  } else {
+    url.searchParams.set("path", target.transportPath);
+  }
   return url.toString();
 }
 
@@ -39,6 +43,17 @@ function parseLocalDaemonTransportUrl(url: string): LocalTransportTarget {
     throw new Error(`Unsupported local transport URL: ${url}`);
   }
   const transportType = parsed.hostname;
+  if (transportType === "tcp") {
+    const endpoint = parsed.searchParams.get("endpoint")?.trim() ?? "";
+    if (!endpoint) {
+      throw new Error(`Invalid local transport target: ${url}`);
+    }
+    return {
+      transportType,
+      endpoint,
+    };
+  }
+
   const transportPath = parsed.searchParams.get("path")?.trim() ?? "";
   if ((transportType !== "socket" && transportType !== "pipe") || !transportPath) {
     throw new Error(`Invalid local transport target: ${url}`);
@@ -50,6 +65,14 @@ function parseLocalDaemonTransportUrl(url: string): LocalTransportTarget {
 }
 
 export function createDesktopLocalDaemonTransportFactory(): DaemonTransportFactory | null {
+  if (
+    typeof window === "undefined" ||
+    typeof window.paseoDesktop?.invoke !== "function" ||
+    typeof window.paseoDesktop?.events?.on !== "function"
+  ) {
+    return null;
+  }
+
   return ({ url }) => {
     const target = parseLocalDaemonTransportUrl(url);
     let sessionId: string | null = null;

@@ -1,142 +1,182 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClientConfig } from "@server/client/daemon-client";
-import type { DaemonConnectionDependencies, DaemonProbeClient } from "./test-daemon-connection";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
-class FakeDaemonClient implements DaemonProbeClient {
-  readonly lastError: string | null;
+const daemonClientMock = vi.hoisted(() => {
+  const createdConfigs: Array<{
+    clientId?: string;
+    password?: string;
+    transportFactory?: unknown;
+    url?: string;
+  }> = [];
+  let nextConnectError: Error | null = null;
+  let nextLastError: string | null = null;
 
-  constructor(
-    private readonly probe: FakeDaemonProbe,
-    readonly config: DaemonClientConfig,
-  ) {
-    this.lastError = probe.nextLastError;
-  }
+  class MockDaemonClient {
+    public lastError: string | null = nextLastError;
+    private lastServerInfo = {
+      status: "server_info" as const,
+      serverId: "srv_probe_test",
+      hostname: "probe-host" as string | null,
+      version: "0.0.0",
+    };
 
-  async connect(): Promise<void> {
-    if (this.probe.nextConnectError) {
-      throw this.probe.nextConnectError;
+    constructor(config: {
+      clientId?: string;
+      password?: string;
+      transportFactory?: unknown;
+      url?: string;
+    }) {
+      createdConfigs.push(config);
+    }
+
+    subscribeConnectionStatus(): () => void {
+      return () => undefined;
+    }
+
+    on(): () => void {
+      return () => undefined;
+    }
+
+    async connect(): Promise<void> {
+      if (nextConnectError) {
+        throw nextConnectError;
+      }
+      return;
+    }
+
+    getLastServerInfoMessage() {
+      return this.lastServerInfo;
+    }
+
+    async ping(): Promise<{ rttMs: number }> {
+      return { rttMs: 42 };
+    }
+
+    async close(): Promise<void> {
+      return;
     }
   }
 
-  getLastServerInfoMessage() {
-    return {
-      serverId: "srv_probe_test",
-      hostname: "probe-host",
-    };
-  }
-
-  async close(): Promise<void> {
-    this.probe.closedClients.push(this);
-  }
-}
-
-class FakeDaemonProbe {
-  createdClients: FakeDaemonClient[] = [];
-  closedClients: FakeDaemonClient[] = [];
-  clientIdsRequested = 0;
-  nextConnectError: Error | null = null;
-  nextLastError: string | null = null;
-
-  readonly deps: DaemonConnectionDependencies<FakeDaemonClient> = {
-    getClientId: async () => {
-      this.clientIdsRequested += 1;
-      return "cid_shared_probe_test";
+  return {
+    MockDaemonClient,
+    createdConfigs,
+    setNextConnectFailure: (error: Error, lastError: string | null) => {
+      nextConnectError = error;
+      nextLastError = lastError;
     },
-    resolveAppVersion: () => null,
-    createLocalTransportFactory: () => null,
-    buildLocalTransportUrl: ({ transportType, transportPath }) =>
-      `paseo+local://${transportType}?path=${encodeURIComponent(transportPath)}`,
-    createClient: (config) => {
-      const client = new FakeDaemonClient(this, config);
-      this.createdClients.push(client);
-      return client;
+    reset: () => {
+      createdConfigs.length = 0;
+      nextConnectError = null;
+      nextLastError = null;
     },
   };
+});
 
-  failNextConnection(error: Error, lastError: string | null): void {
-    this.nextConnectError = error;
-    this.nextLastError = lastError;
-  }
+const clientIdMock = vi.hoisted(() => ({
+  getOrCreateClientId: vi.fn(async () => "cid_shared_probe_test"),
+}));
 
-  createdConfigs(): DaemonClientConfig[] {
-    return this.createdClients.map((client) => client.config);
-  }
-}
+const desktopTransportMock = vi.hoisted(() => ({
+  createDesktopLocalDaemonTransportFactory: vi.fn((): unknown => null),
+  buildLocalDaemonTransportUrl: vi.fn(
+    (
+      target:
+        | {
+            transportType: "socket" | "pipe";
+            transportPath: string;
+          }
+        | {
+            transportType: "tcp";
+            endpoint: string;
+          },
+    ) => {
+      if (target.transportType === "tcp") {
+        return `paseo+local://tcp?endpoint=${encodeURIComponent(target.endpoint)}`;
+      }
+      return `paseo+local://${target.transportType}?path=${encodeURIComponent(target.transportPath)}`;
+    },
+  ),
+}));
+
+vi.mock("@server/client/daemon-client", () => ({
+  DaemonClient: daemonClientMock.MockDaemonClient,
+}));
+
+vi.mock("./client-id", () => ({
+  getOrCreateClientId: clientIdMock.getOrCreateClientId,
+}));
+
+vi.mock("@/desktop/daemon/desktop-daemon-transport", () => ({
+  createDesktopLocalDaemonTransportFactory:
+    desktopTransportMock.createDesktopLocalDaemonTransportFactory,
+  buildLocalDaemonTransportUrl: desktopTransportMock.buildLocalDaemonTransportUrl,
+}));
 
 describe("test-daemon-connection connectToDaemon", () => {
-  let probe: FakeDaemonProbe;
-
   beforeEach(() => {
     vi.stubGlobal("__DEV__", false);
-    probe = new FakeDaemonProbe();
+    daemonClientMock.reset();
+    clientIdMock.getOrCreateClientId.mockClear();
+    desktopTransportMock.createDesktopLocalDaemonTransportFactory.mockReset();
+    desktopTransportMock.createDesktopLocalDaemonTransportFactory.mockReturnValue(null);
+    desktopTransportMock.buildLocalDaemonTransportUrl.mockClear();
   });
 
   it("reuses the app clientId for direct connections", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    const first = await connectToDaemon(
-      {
-        id: "direct:lan:6767",
-        type: "directTcp",
-        endpoint: "lan:6767",
-      },
-      undefined,
-      probe.deps,
-    );
+    const mod = await import("./test-daemon-connection");
+
+    const first = await mod.connectToDaemon({
+      id: "direct:lan:6767",
+      type: "directTcp",
+      endpoint: "lan:6767",
+    });
     await first.client.close();
 
-    const second = await connectToDaemon(
-      {
-        id: "direct:lan:6767",
-        type: "directTcp",
-        endpoint: "lan:6767",
-      },
-      undefined,
-      probe.deps,
-    );
+    const second = await mod.connectToDaemon({
+      id: "direct:lan:6767",
+      type: "directTcp",
+      endpoint: "lan:6767",
+    });
     await second.client.close();
 
-    const [firstConfig, secondConfig] = probe.createdConfigs();
+    const [firstConfig, secondConfig] = daemonClientMock.createdConfigs;
     expect(firstConfig?.clientId).toBe("cid_shared_probe_test");
     expect(secondConfig?.clientId).toBe("cid_shared_probe_test");
-    expect(probe.clientIdsRequested).toBe(2);
+    expect(clientIdMock.getOrCreateClientId).toHaveBeenCalledTimes(2);
   });
 
   it("encodes the local socket target into the client config", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    const result = await connectToDaemon(
-      {
-        id: "socket:/tmp/paseo.sock",
-        type: "directSocket",
-        path: "/tmp/paseo.sock",
-      },
-      undefined,
-      probe.deps,
-    );
+    const mod = await import("./test-daemon-connection");
+
+    const result = await mod.connectToDaemon({
+      id: "socket:/tmp/paseo.sock",
+      type: "directSocket",
+      path: "/tmp/paseo.sock",
+    });
     await result.client.close();
 
-    expect(probe.createdConfigs()[0]?.url).toBe("paseo+local://socket?path=%2Ftmp%2Fpaseo.sock");
+    expect(daemonClientMock.createdConfigs[0]?.url).toBe(
+      "paseo+local://socket?path=%2Ftmp%2Fpaseo.sock",
+    );
   });
 
   it("passes direct TCP connection passwords into the client config", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    const result = await connectToDaemon(
-      {
-        id: "direct:lan:6767",
-        type: "directTcp",
-        endpoint: "lan:6767",
-        password: "shared-secret",
-      },
-      undefined,
-      probe.deps,
-    );
+    const mod = await import("./test-daemon-connection");
+
+    const result = await mod.connectToDaemon({
+      id: "direct:lan:6767",
+      type: "directTcp",
+      endpoint: "lan:6767",
+      password: "shared-secret",
+    });
     await result.client.close();
 
-    expect(probe.createdConfigs()[0]?.password).toBe("shared-secret");
+    expect(daemonClientMock.createdConfigs[0]?.password).toBe("shared-secret");
   });
 
   it("uses relay TLS from the stored connection", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    const tlsResult = await connectToDaemon(
+    const mod = await import("./test-daemon-connection");
+
+    const tlsResult = await mod.connectToDaemon(
       {
         id: "relay:wss:[::1]:443",
         type: "relay",
@@ -145,11 +185,10 @@ describe("test-daemon-connection connectToDaemon", () => {
         daemonPublicKeyB64: "pubkey",
       },
       { serverId: "srv_probe_test" },
-      probe.deps,
     );
     await tlsResult.client.close();
 
-    const plainResult = await connectToDaemon(
+    const plainResult = await mod.connectToDaemon(
       {
         id: "relay:relay.paseo.sh:443",
         type: "relay",
@@ -158,54 +197,63 @@ describe("test-daemon-connection connectToDaemon", () => {
         daemonPublicKeyB64: "pubkey",
       },
       { serverId: "srv_probe_test" },
-      probe.deps,
     );
     await plainResult.client.close();
 
-    expect(probe.createdConfigs()[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
-    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.paseo\.sh:443\/ws\?/);
+    expect(daemonClientMock.createdConfigs[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
+    expect(daemonClientMock.createdConfigs[1]?.url).toMatch(/^ws:\/\/relay\.paseo\.sh:443\/ws\?/);
   });
 
   it("surfaces auth rejection as an incorrect password", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    probe.failNextConnection(
+    const mod = await import("./test-daemon-connection");
+    daemonClientMock.setNextConnectFailure(
       new Error("Transport closed (code 4001)"),
       "Transport closed (code 4001)",
     );
 
     await expect(
-      connectToDaemon(
-        {
-          id: "direct:lan:6767",
-          type: "directTcp",
-          endpoint: "lan:6767",
-          password: "wrong-secret",
-        },
-        undefined,
-        probe.deps,
-      ),
+      mod.connectToDaemon({
+        id: "direct:lan:6767",
+        type: "directTcp",
+        endpoint: "lan:6767",
+        password: "wrong-secret",
+      }),
     ).rejects.toMatchObject({
       message: "Incorrect password",
     });
   });
 
   it("keeps generic transport failures generic when a password was supplied", async () => {
-    const { connectToDaemon } = await import("./test-daemon-connection");
-    probe.failNextConnection(new Error("Transport error"), "Transport error");
+    const mod = await import("./test-daemon-connection");
+    daemonClientMock.setNextConnectFailure(new Error("Transport error"), "Transport error");
 
     await expect(
-      connectToDaemon(
-        {
-          id: "direct:lan:6767",
-          type: "directTcp",
-          endpoint: "lan:6767",
-          password: "shared-secret",
-        },
-        undefined,
-        probe.deps,
-      ),
+      mod.connectToDaemon({
+        id: "direct:lan:6767",
+        type: "directTcp",
+        endpoint: "lan:6767",
+        password: "shared-secret",
+      }),
     ).rejects.toMatchObject({
       message: "Transport error",
     });
+  });
+
+  it("routes direct TCP probes through the desktop local transport when available", async () => {
+    const transportFactory = vi.fn();
+    desktopTransportMock.createDesktopLocalDaemonTransportFactory.mockReturnValue(transportFactory);
+    const mod = await import("./test-daemon-connection");
+
+    const result = await mod.connectToDaemon({
+      id: "direct:127.0.0.1:6767",
+      type: "directTcp",
+      endpoint: "127.0.0.1:6767",
+    });
+    await result.client.close();
+
+    expect(daemonClientMock.createdConfigs[0]?.transportFactory).toBe(transportFactory);
+    expect(daemonClientMock.createdConfigs[0]?.url).toBe(
+      "paseo+local://tcp?endpoint=127.0.0.1%3A6767",
+    );
   });
 });

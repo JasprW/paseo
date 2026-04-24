@@ -6,6 +6,7 @@ import {
   DESKTOP_TRAFFIC_LIGHT_HEIGHT,
   DESKTOP_WINDOW_CONTROLS_WIDTH,
   DESKTOP_WINDOW_CONTROLS_HEIGHT,
+  useIsCompactFormFactor,
 } from "@/constants/layout";
 import { getDesktopWindow } from "@/desktop/electron/window";
 import { usePanelStore } from "@/stores/panel-store";
@@ -113,6 +114,7 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
   right: number;
   top: number;
 } {
+  const isCompactLayout = useIsCompactFormFactor();
   const sidebarOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const explorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const focusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
@@ -125,6 +127,7 @@ export function useWindowControlsPadding(role: WindowControlsPaddingRole): {
     sidebarClosed,
     explorerOpen,
     focusModeEnabled,
+    isCompactLayout,
   });
 
   return useMemo(() => ({ left, right, top }), [left, right, top]);
@@ -136,6 +139,7 @@ export function resolveWindowControlsPadding(input: {
   sidebarClosed: boolean;
   explorerOpen: boolean;
   focusModeEnabled: boolean;
+  isCompactLayout: boolean;
 }): RawWindowControlsPadding {
   if (input.role === "sidebar") {
     return {
@@ -146,9 +150,11 @@ export function resolveWindowControlsPadding(input: {
   }
 
   if (input.role === "header") {
+    const headerOwnsLeftControls = input.isCompactLayout || input.sidebarClosed;
+    const headerOwnsRightControls = input.isCompactLayout || !input.explorerOpen;
     return {
-      left: input.sidebarClosed ? input.rawPadding.left : 0,
-      right: input.explorerOpen ? 0 : input.rawPadding.right,
+      left: headerOwnsLeftControls ? input.rawPadding.left : 0,
+      right: headerOwnsRightControls ? input.rawPadding.right : 0,
       top: 0,
     };
   }

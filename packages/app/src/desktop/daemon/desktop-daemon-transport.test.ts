@@ -57,6 +57,14 @@ vi.mock("./desktop-daemon", () => ({
 
 describe("desktop-daemon-transport", () => {
   beforeEach(() => {
+    (globalThis as { window?: unknown }).window = {
+      paseoDesktop: {
+        invoke: vi.fn(),
+        events: {
+          on: vi.fn(),
+        },
+      },
+    };
     desktopDaemonMock.openLocalTransportSession.mockReset();
     desktopDaemonMock.listenToLocalTransportEvents.mockClear();
     desktopDaemonMock.sendLocalTransportMessage.mockClear();
@@ -131,5 +139,27 @@ describe("desktop-daemon-transport", () => {
 
     expect(desktopDaemonMock.closeLocalTransportSession).toHaveBeenCalledWith("local-session-2");
     expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens tcp local transport targets through the desktop bridge", async () => {
+    desktopDaemonMock.openLocalTransportSession.mockResolvedValue("local-session-3");
+
+    const mod = await import("./desktop-daemon-transport");
+    const transportFactory = mod.createDesktopLocalDaemonTransportFactory();
+    expect(transportFactory).not.toBeNull();
+
+    transportFactory!({
+      url: mod.buildLocalDaemonTransportUrl({
+        transportType: "tcp",
+        endpoint: "localhost:6767",
+      }),
+    });
+
+    await Promise.resolve();
+
+    expect(desktopDaemonMock.openLocalTransportSession).toHaveBeenCalledWith({
+      transportType: "tcp",
+      endpoint: "localhost:6767",
+    });
   });
 });

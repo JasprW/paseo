@@ -473,6 +473,16 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         });
       }
       if (connection.type === "directTcp") {
+        if (localTransportFactory) {
+          return new DaemonClient({
+            ...base,
+            transportFactory: localTransportFactory,
+            url: buildLocalDaemonTransportUrl({
+              transportType: "tcp",
+              endpoint: connection.endpoint,
+            }),
+          });
+        }
         return new DaemonClient({
           ...base,
           url: buildDaemonWebSocketUrl(connection.endpoint, {

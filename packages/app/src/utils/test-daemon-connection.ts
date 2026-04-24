@@ -127,6 +127,16 @@ export async function buildClientConfig(
   }
 
   if (connection.type === "directTcp") {
+    if (localTransportFactory) {
+      return {
+        ...base,
+        transportFactory: localTransportFactory,
+        url: buildLocalDaemonTransportUrl({
+          transportType: "tcp",
+          endpoint: connection.endpoint,
+        }),
+      };
+    }
     return {
       ...base,
       url: buildDaemonWebSocketUrl(connection.endpoint, { useTls: connection.useTls ?? false }),

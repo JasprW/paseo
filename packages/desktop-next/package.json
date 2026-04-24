@@ -1,0 +1,29 @@
+{
+  "name": "@getpaseo/desktop-next",
+  "version": "0.1.63-beta.1",
+  "private": true,
+  "description": "Paseo Next desktop app (Tauri wrapper)",
+  "homepage": "https://paseo.sh",
+  "license": "AGPL-3.0-or-later",
+  "author": {
+    "name": "Mohamed Boudra",
+    "email": "hello@moboudra.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/getpaseo/paseo.git"
+  },
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "./scripts/dev.sh",
+    "dev:stable": "PASEO_NEXT_DAEMON_MODE=stable ./scripts/dev.sh",
+    "build": "npm --prefix ../.. run build:daemon && npm run build:web --workspace=@getpaseo/app && tauri build --bundles app",
+    "typecheck": "cargo check --manifest-path src-tauri/Cargo.toml"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.10.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.10.1"
+  }
+}

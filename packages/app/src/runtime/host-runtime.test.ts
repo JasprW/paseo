@@ -1,4 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  Object.defineProperty(globalThis, "__DEV__", {
+    configurable: true,
+    value: false,
+  });
+  process.env.EXPO_OS ??= "web";
+});
+
 import type {
   DaemonClient,
   ConnectionState,

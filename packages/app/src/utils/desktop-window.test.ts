@@ -16,6 +16,7 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: true,
         explorerOpen: false,
         focusModeEnabled: false,
+        isCompactLayout: false,
       }),
     ).toEqual({
       left: 80,
@@ -32,9 +33,27 @@ describe("resolveWindowControlsPadding", () => {
         sidebarClosed: true,
         explorerOpen: false,
         focusModeEnabled: false,
+        isCompactLayout: false,
       }),
     ).toEqual({
       left: 0,
+      right: 48,
+      top: 0,
+    });
+  });
+
+  it("pads the compact main header even when desktop sidebars are still marked open", () => {
+    expect(
+      resolveWindowControlsPadding({
+        role: "header",
+        rawPadding,
+        sidebarClosed: false,
+        explorerOpen: true,
+        focusModeEnabled: false,
+        isCompactLayout: true,
+      }),
+    ).toEqual({
+      left: 80,
       right: 48,
       top: 0,
     });
