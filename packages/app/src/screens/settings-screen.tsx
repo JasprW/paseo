@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
   type PressableStateCallbackType,
 } from "react-native";
@@ -27,6 +28,8 @@ import {
   Shield,
   Puzzle,
   Plus,
+  Type,
+  Code2,
 } from "lucide-react-native";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
@@ -34,7 +37,19 @@ import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useAppSettings, type AppSettings, type SendBehavior } from "@/hooks/use-settings";
-import { THEME_SWATCHES } from "@/styles/theme";
+import {
+  DARK_THEME_NAMES,
+  LIGHT_THEME_NAMES,
+  THEME_SWATCHES,
+  type DarkThemeName,
+  type LightThemeName,
+} from "@/styles/theme";
+import {
+  DEFAULT_BODY_FONT_FAMILY,
+  DEFAULT_MONO_FONT_FAMILY,
+  DEFAULT_UI_FONT_FAMILY,
+  sanitizeFontFamily,
+} from "@/styles/font-options";
 import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
@@ -51,7 +66,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
@@ -109,17 +123,17 @@ function ThemeIcon({
   size,
   color,
 }: {
-  theme: AppSettings["theme"];
+  theme: AppSettings["themeMode"] | LightThemeName | DarkThemeName;
   size: number;
   color: string;
 }) {
   switch (theme) {
+    case "system":
+      return <Monitor size={size} color={color} />;
     case "light":
       return <Sun size={size} color={color} />;
     case "dark":
       return <Moon size={size} color={color} />;
-    case "auto":
-      return <Monitor size={size} color={color} />;
     default:
       return <ThemeSwatch color={THEME_SWATCHES[theme]} size={size} />;
   }
@@ -156,17 +170,43 @@ function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { ho
   ];
 }
 
-const THEME_LABELS: Record<AppSettings["theme"], string> = {
+const THEME_MODE_LABELS: Record<AppSettings["themeMode"], string> = {
+  system: "System",
   light: "Light",
+  dark: "Dark",
+};
+
+const THEME_LABELS: Record<LightThemeName | DarkThemeName, string> = {
+  light: "Light",
+  "claude-light": "Claude Light",
   dark: "Dark",
   zinc: "Zinc",
   midnight: "Midnight",
-  claude: "Claude",
+  claude: "Claude Dark",
   ghostty: "Ghostty",
-  auto: "System",
 };
 
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
+
+const THEME_MODE_OPTIONS = [
+  {
+    value: "system" as const,
+    label: THEME_MODE_LABELS.system,
+    icon: ({ color, size }: { color: string; size: number }) => (
+      <Monitor size={size} color={color} />
+    ),
+  },
+  {
+    value: "light" as const,
+    label: THEME_MODE_LABELS.light,
+    icon: ({ color, size }: { color: string; size: number }) => <Sun size={size} color={color} />,
+  },
+  {
+    value: "dark" as const,
+    label: THEME_MODE_LABELS.dark,
+    icon: ({ color, size }: { color: string; size: number }) => <Moon size={size} color={color} />,
+  },
+];
 
 const SEND_BEHAVIOR_OPTIONS = [
   { value: "interrupt" as const, label: "Interrupt" },
@@ -184,25 +224,32 @@ const RELEASE_CHANNEL_OPTIONS = [
 
 interface GeneralSectionProps {
   settings: AppSettings;
-  handleThemeChange: (theme: AppSettings["theme"]) => void;
+  handleThemeModeChange: (themeMode: AppSettings["themeMode"]) => void;
+  handleLightThemeChange: (theme: AppSettings["lightTheme"]) => void;
+  handleDarkThemeChange: (theme: AppSettings["darkTheme"]) => void;
+  handleUiFontChange: (font: AppSettings["uiFont"]) => void;
+  handleBodyFontChange: (font: AppSettings["bodyFont"]) => void;
+  handleMonoFontChange: (font: AppSettings["monoFont"]) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
 }
 
-interface ThemeMenuItemProps {
-  themeValue: AppSettings["theme"];
+type ConcreteThemeName = LightThemeName | DarkThemeName;
+
+interface ThemeMenuItemProps<T extends ConcreteThemeName> {
+  themeValue: T;
   selected: boolean;
   iconSize: number;
   iconColor: string;
-  onChange: (theme: AppSettings["theme"]) => void;
+  onChange: (theme: T) => void;
 }
 
-function ThemeMenuItem({
+function ThemeMenuItem<T extends ConcreteThemeName>({
   themeValue,
   selected,
   iconSize,
   iconColor,
   onChange,
-}: ThemeMenuItemProps) {
+}: ThemeMenuItemProps<T>) {
   const handleSelect = useCallback(() => {
     onChange(themeValue);
   }, [onChange, themeValue]);
@@ -217,9 +264,113 @@ function ThemeMenuItem({
   );
 }
 
+interface ThemeDropdownProps<T extends ConcreteThemeName> {
+  value: T;
+  options: readonly T[];
+  iconSize: number;
+  iconColor: string;
+  onChange: (theme: T) => void;
+}
+
+function ThemeDropdown<T extends ConcreteThemeName>({
+  value,
+  options,
+  iconSize,
+  iconColor,
+  onChange,
+}: ThemeDropdownProps<T>) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger style={themeTriggerStyle}>
+        <ThemeIcon theme={value} size={iconSize} color={iconColor} />
+        <Text style={styles.themeTriggerText}>{THEME_LABELS[value]}</Text>
+        <ChevronDown size={iconSize} color={iconColor} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="bottom" align="end" width={200}>
+        {options.map((themeName) => (
+          <ThemeMenuItem
+            key={themeName}
+            themeValue={themeName}
+            selected={value === themeName}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            onChange={onChange}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+interface FontFamilyInputProps {
+  value: string;
+  defaultFontFamily: string;
+  icon: ComponentType<{ size: number; color: string }>;
+  iconSize: number;
+  iconColor: string;
+  accessibilityLabel: string;
+  onChange: (fontFamily: string) => void;
+}
+
+function FontFamilyInput({
+  value,
+  icon: Icon,
+  defaultFontFamily,
+  iconSize,
+  iconColor,
+  accessibilityLabel,
+  onChange,
+}: FontFamilyInputProps) {
+  const { theme } = useUnistyles();
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const previewFontFamily = sanitizeFontFamily(draft, defaultFontFamily);
+  const inputStyle = useMemo(
+    () => [styles.fontInput, { fontFamily: previewFontFamily }],
+    [previewFontFamily],
+  );
+  const commitDraft = useCallback(() => {
+    const next = sanitizeFontFamily(draft, defaultFontFamily);
+    setDraft(next);
+    if (next !== value) {
+      onChange(next);
+    }
+  }, [defaultFontFamily, draft, onChange, value]);
+
+  return (
+    <View style={styles.fontInputShell}>
+      <Icon size={iconSize} color={iconColor} />
+      <TextInput
+        accessibilityLabel={accessibilityLabel}
+        autoCapitalize="none"
+        autoCorrect={false}
+        onBlur={commitDraft}
+        onChangeText={setDraft}
+        onSubmitEditing={commitDraft}
+        placeholder="Font family"
+        placeholderTextColor={theme.colors.foregroundMuted}
+        returnKeyType="done"
+        selectionColor={theme.colors.accent}
+        spellCheck={false}
+        style={inputStyle}
+        value={draft}
+      />
+    </View>
+  );
+}
+
 function GeneralSection({
   settings,
-  handleThemeChange,
+  handleThemeModeChange,
+  handleLightThemeChange,
+  handleDarkThemeChange,
+  handleUiFontChange,
+  handleBodyFontChange,
+  handleMonoFontChange,
   handleSendBehaviorChange,
 }: GeneralSectionProps) {
   const { theme } = useUnistyles();
@@ -231,38 +382,80 @@ function GeneralSection({
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Theme</Text>
+            <Text style={settingsStyles.rowTitle}>Appearance</Text>
           </View>
-          <DropdownMenu>
-            <DropdownMenuTrigger style={themeTriggerStyle}>
-              <ThemeIcon theme={settings.theme} size={iconSize} color={iconColor} />
-              <Text style={styles.themeTriggerText}>{THEME_LABELS[settings.theme]}</Text>
-              <ChevronDown size={theme.iconSize.sm} color={iconColor} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="end" width={200}>
-              {(["light", "dark", "auto"] as const).map((t) => (
-                <ThemeMenuItem
-                  key={t}
-                  themeValue={t}
-                  selected={settings.theme === t}
-                  iconSize={iconSize}
-                  iconColor={iconColor}
-                  onChange={handleThemeChange}
-                />
-              ))}
-              <DropdownMenuSeparator />
-              {(["zinc", "midnight", "claude", "ghostty"] as const).map((t) => (
-                <ThemeMenuItem
-                  key={t}
-                  themeValue={t}
-                  selected={settings.theme === t}
-                  iconSize={iconSize}
-                  iconColor={iconColor}
-                  onChange={handleThemeChange}
-                />
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <SegmentedControl
+            size="sm"
+            value={settings.themeMode}
+            onValueChange={handleThemeModeChange}
+            options={THEME_MODE_OPTIONS}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Light theme</Text>
+          </View>
+          <ThemeDropdown
+            value={settings.lightTheme}
+            options={LIGHT_THEME_NAMES}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            onChange={handleLightThemeChange}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Dark theme</Text>
+          </View>
+          <ThemeDropdown
+            value={settings.darkTheme}
+            options={DARK_THEME_NAMES}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            onChange={handleDarkThemeChange}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>UI font</Text>
+          </View>
+          <FontFamilyInput
+            value={settings.uiFont}
+            defaultFontFamily={DEFAULT_UI_FONT_FAMILY}
+            icon={Type}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            accessibilityLabel="UI font family"
+            onChange={handleUiFontChange}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Session font</Text>
+          </View>
+          <FontFamilyInput
+            value={settings.bodyFont}
+            defaultFontFamily={DEFAULT_BODY_FONT_FAMILY}
+            icon={Type}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            accessibilityLabel="Session font family"
+            onChange={handleBodyFontChange}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Mono font</Text>
+          </View>
+          <FontFamilyInput
+            value={settings.monoFont}
+            defaultFontFamily={DEFAULT_MONO_FONT_FAMILY}
+            icon={Code2}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            accessibilityLabel="Mono font family"
+            onChange={handleMonoFontChange}
+          />
         </View>
         <View style={ROW_WITH_BORDER_STYLE}>
           <View style={settingsStyles.rowContent}>
@@ -707,9 +900,44 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
   const hostServerIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const anyOnlineServerId = useAnyOnlineHostServerId(hostServerIds);
 
-  const handleThemeChange = useCallback(
-    (nextTheme: AppSettings["theme"]) => {
-      void updateSettings({ theme: nextTheme });
+  const handleThemeModeChange = useCallback(
+    (themeMode: AppSettings["themeMode"]) => {
+      void updateSettings({ themeMode });
+    },
+    [updateSettings],
+  );
+
+  const handleLightThemeChange = useCallback(
+    (lightTheme: AppSettings["lightTheme"]) => {
+      void updateSettings({ lightTheme });
+    },
+    [updateSettings],
+  );
+
+  const handleDarkThemeChange = useCallback(
+    (darkTheme: AppSettings["darkTheme"]) => {
+      void updateSettings({ darkTheme });
+    },
+    [updateSettings],
+  );
+
+  const handleUiFontChange = useCallback(
+    (uiFont: AppSettings["uiFont"]) => {
+      void updateSettings({ uiFont });
+    },
+    [updateSettings],
+  );
+
+  const handleBodyFontChange = useCallback(
+    (bodyFont: AppSettings["bodyFont"]) => {
+      void updateSettings({ bodyFont });
+    },
+    [updateSettings],
+  );
+
+  const handleMonoFontChange = useCallback(
+    (monoFont: AppSettings["monoFont"]) => {
+      void updateSettings({ monoFont });
     },
     [updateSettings],
   );
@@ -890,7 +1118,12 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
           return (
             <GeneralSection
               settings={settings}
-              handleThemeChange={handleThemeChange}
+              handleThemeModeChange={handleThemeModeChange}
+              handleLightThemeChange={handleLightThemeChange}
+              handleDarkThemeChange={handleDarkThemeChange}
+              handleUiFontChange={handleUiFontChange}
+              handleBodyFontChange={handleBodyFontChange}
+              handleMonoFontChange={handleMonoFontChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
             />
           );
@@ -1087,6 +1320,26 @@ const styles = StyleSheet.create((theme) => ({
   themeTriggerText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  fontInputShell: {
+    width: 240,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+  },
+  fontInput: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
   },
 }));
 

@@ -76,7 +76,15 @@ import {
 } from "@/stores/navigation-active-workspace-store";
 import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import {
+  DARK_THEME_NAMES,
+  LIGHT_THEME_NAMES,
+  THEME_TO_UNISTYLES,
+  UNISTYLES_THEME_KEYS,
+  resolveThemeName,
+} from "@/styles/theme";
+import { resolveAppFontFamilies } from "@/styles/font-options";
+import { applyWebFontOverrides } from "@/styles/web-font-overrides";
 import type { HostProfile } from "@/types/host-connection";
 import { resolveActiveHost } from "@/utils/active-host";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
@@ -405,7 +413,8 @@ interface AppContainerProps {
   chromeEnabled?: boolean;
 }
 
-const THEME_CYCLE_ORDER: ThemeName[] = ["dark", "zinc", "midnight", "claude", "ghostty", "light"];
+const DARK_THEME_CYCLE_ORDER = DARK_THEME_NAMES;
+const LIGHT_THEME_CYCLE_ORDER = LIGHT_THEME_NAMES;
 
 function AppContainer({
   children,
@@ -415,6 +424,7 @@ function AppContainer({
   const { theme } = useUnistyles();
   const daemons = useHosts();
   const { settings, updateSettings } = useAppSettings();
+  const systemColorScheme = useColorScheme();
   const toggleMobileAgentList = usePanelStore((state) => state.toggleMobileAgentList);
   const toggleDesktopAgentList = usePanelStore((state) => state.toggleDesktopAgentList);
   const openDesktopAgentList = usePanelStore((state) => state.openDesktopAgentList);
@@ -424,10 +434,25 @@ function AppContainer({
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
 
   const cycleTheme = useCallback(() => {
-    const currentIndex = THEME_CYCLE_ORDER.indexOf(settings.theme as ThemeName);
-    const nextIndex = (currentIndex + 1) % THEME_CYCLE_ORDER.length;
-    void updateSettings({ theme: THEME_CYCLE_ORDER[nextIndex]! });
-  }, [settings.theme, updateSettings]);
+    const resolvedColorScheme =
+      settings.themeMode === "system" ? (systemColorScheme ?? "light") : settings.themeMode;
+    if (resolvedColorScheme === "light") {
+      const currentIndex = LIGHT_THEME_CYCLE_ORDER.indexOf(settings.lightTheme);
+      const nextIndex = (currentIndex + 1) % LIGHT_THEME_CYCLE_ORDER.length;
+      void updateSettings({ lightTheme: LIGHT_THEME_CYCLE_ORDER[nextIndex]! });
+      return;
+    }
+
+    const currentIndex = DARK_THEME_CYCLE_ORDER.indexOf(settings.darkTheme);
+    const nextIndex = (currentIndex + 1) % DARK_THEME_CYCLE_ORDER.length;
+    void updateSettings({ darkTheme: DARK_THEME_CYCLE_ORDER[nextIndex]! });
+  }, [
+    settings.darkTheme,
+    settings.lightTheme,
+    settings.themeMode,
+    systemColorScheme,
+    updateSettings,
+  ]);
 
   const isCompactLayout = useIsCompactFormFactor();
   const chromeEnabled = chromeEnabledOverride ?? daemons.length > 0;
@@ -613,18 +638,37 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   const { upsertConnectionFromOfferUrl } = useHostMutations();
   const systemColorScheme = useColorScheme();
   const { theme } = useUnistyles();
-  const resolvedTheme = settings.theme === "auto" ? (systemColorScheme ?? "light") : settings.theme;
+  const resolvedThemeName = resolveThemeName(settings, systemColorScheme);
+  const fontFamilies = useMemo(
+    () =>
+      resolveAppFontFamilies({
+        uiFont: settings.uiFont,
+        bodyFont: settings.bodyFont,
+        monoFont: settings.monoFont,
+      }),
+    [settings.uiFont, settings.bodyFont, settings.monoFont],
+  );
 
   // Apply theme setting on mount and when it changes
   useEffect(() => {
     if (settingsLoading) return;
-    if (settings.theme === "auto") {
-      UnistylesRuntime.setAdaptiveThemes(true);
-    } else {
-      UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[settings.theme]);
+    for (const themeKey of UNISTYLES_THEME_KEYS) {
+      UnistylesRuntime.updateTheme(themeKey, (currentTheme) => ({
+        ...currentTheme,
+        fontFamily: fontFamilies,
+      }));
     }
-  }, [settingsLoading, settings.theme]);
+    UnistylesRuntime.setAdaptiveThemes(false);
+    UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[resolvedThemeName]);
+  }, [fontFamilies, settingsLoading, resolvedThemeName]);
+
+  useEffect(() => {
+    if (settingsLoading || !isWeb || typeof document === "undefined") {
+      return;
+    }
+
+    applyWebFontOverrides(document, fontFamilies);
+  }, [fontFamilies, settingsLoading]);
 
   useEffect(() => {
     if (settingsLoading || isNative) {
@@ -637,7 +681,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
     }).catch((error) => {
       console.warn("[DesktopWindow] Failed to update window controls overlay", error);
     });
-  }, [settingsLoading, resolvedTheme, theme.colors.foreground, theme.colors.surface0]);
+  }, [settingsLoading, resolvedThemeName, theme.colors.foreground, theme.colors.surface0]);
 
   return (
     <VoiceProvider>

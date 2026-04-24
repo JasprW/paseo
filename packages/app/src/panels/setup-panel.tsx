@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import invariant from "tiny-invariant";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Fonts } from "@/constants/theme";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
@@ -525,7 +524,7 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
   },
   logText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
     color: theme.colors.foreground,

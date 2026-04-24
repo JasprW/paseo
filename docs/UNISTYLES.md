@@ -181,10 +181,10 @@ Paseo currently stores app settings in AsyncStorage and loads them through react
 
 1. Unistyles config starts with `adaptiveThemes: true`.
 2. The device may report system light.
-3. Settings load a persisted non-auto preference, such as dark.
-4. The app calls `setAdaptiveThemes(false)` and `setTheme("dark")`.
+3. Settings load the persisted theme policy plus separate light and dark theme choices.
+4. The app resolves the policy and current system color scheme to a concrete theme, then calls `setAdaptiveThemes(false)` and `setTheme(...)`.
 
-That brief transition is expected with the current storage model. It makes tracking-compatible styles important: anything mounted during the initial adaptive theme must update correctly after the persisted preference applies. [Issue #550](https://github.com/jpudysz/react-native-unistyles/issues/550) was a separate ScrollView sticky-header bug, but it is still useful context for why ScrollView theme updates deserve extra suspicion.
+That brief transition is expected with the current storage model. System policy is still resolved by the app rather than left to Unistyles adaptive mapping so a user-selected dark theme such as Ghostty is respected when the OS is dark. This makes tracking-compatible styles important: anything mounted during the initial adaptive theme must update correctly after the persisted preference applies. [Issue #550](https://github.com/jpudysz/react-native-unistyles/issues/550) was a separate ScrollView sticky-header bug, but it is still useful context for why ScrollView theme updates deserve extra suspicion.
 
 If we ever need to avoid the transition entirely, store at least the theme preference in synchronous storage and configure Unistyles with `initialTheme`.
 

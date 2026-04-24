@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { Fonts } from "@/constants/theme";
 import { useSessionStore, type ExplorerFile } from "@/stores/session-store";
 import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
@@ -147,14 +146,14 @@ const codeLineStyles = StyleSheet.create((theme) => ({
     flexShrink: 0,
   },
   gutterText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.45,
     opacity: 0.4,
     userSelect: "none",
   },
   lineText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     lineHeight: theme.fontSize.sm * 1.45,
     flex: 1,

@@ -36,7 +36,7 @@ test.describe("Settings sidebar navigation", () => {
 
     await clickSidebarSection(page, "General");
     await expect(page).toHaveURL(/\/settings\/general$/);
-    await expect(page.getByText("Theme", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Appearance", { exact: true }).first()).toBeVisible();
     await expect(page.getByTestId("settings-detail-header-title")).toHaveText("General");
   });
 
@@ -97,7 +97,7 @@ test.describe("Settings — compact master-detail", () => {
     await expect(page).toHaveURL(/\/settings$/);
     await expect(page.getByTestId("settings-sidebar")).toBeVisible();
 
-    await expect(page.getByText("Theme", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Appearance", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Play test" })).toHaveCount(0);
     await expect(page.locator('[data-testid^="settings-host-page-"]')).toHaveCount(0);
   }

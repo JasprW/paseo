@@ -12,7 +12,6 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AdaptiveModalSheet, AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { isWeb } from "@/constants/platform";
-import { Fonts } from "@/constants/theme";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { resolveProviderLabel } from "@/utils/provider-definitions";
@@ -337,7 +336,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
   },
   codeText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foreground,
     lineHeight: 18,
@@ -407,7 +406,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
   modelId: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     marginTop: 2,
   },
   emptyState: {

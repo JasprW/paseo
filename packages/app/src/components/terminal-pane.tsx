@@ -632,6 +632,7 @@ export function TerminalPane({
               streamKey={`${scopeKey}:${terminalId}`}
               testId="terminal-surface"
               xtermTheme={xtermTheme}
+              fontFamily={theme.fontFamily.mono}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
               onSwipeRight={handleSwipeRight}
