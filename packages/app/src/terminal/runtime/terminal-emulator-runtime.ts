@@ -30,6 +30,7 @@ export interface TerminalEmulatorRuntimeMountInput {
   initialSnapshot: TerminalState | null;
   scrollback: number;
   theme: ITheme;
+  fontFamily?: string;
 }
 
 export interface TerminalEmulatorRuntimeCallbacks {
@@ -179,7 +180,7 @@ export class TerminalEmulatorRuntime {
       cursorBlink: true,
       cursorStyle: "bar",
       customGlyphs: true,
-      fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+      fontFamily: input.fontFamily ?? DEFAULT_TERMINAL_FONT_FAMILY,
       fontSize: 13,
       lineHeight: 1.0,
       macOptionIsMeta: true,
@@ -602,6 +603,17 @@ export class TerminalEmulatorRuntime {
       return;
     }
 
+    this.refreshVisibleRows();
+  }
+
+  setFontFamily(input: { fontFamily: string }): void {
+    const terminal = this.terminal;
+    if (!terminal) {
+      return;
+    }
+
+    terminal.options.fontFamily = input.fontFamily;
+    this.fitAndEmitResize?.(true);
     this.refreshVisibleRows();
   }
 

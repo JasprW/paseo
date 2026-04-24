@@ -2,7 +2,6 @@ import React from "react";
 import { View, Text, ScrollView as RNScrollView } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
-import { Fonts } from "@/constants/theme";
 import type { DiffLine } from "@/utils/tool-call-parsers";
 import { useWebScrollbarStyle } from "@/hooks/use-web-scrollbar-style";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
@@ -188,7 +187,7 @@ const styles = StyleSheet.create((theme) => {
       paddingVertical: theme.spacing[1],
     },
     lineText: {
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.xs,
       color: theme.colors.foreground,
       ...(isWeb

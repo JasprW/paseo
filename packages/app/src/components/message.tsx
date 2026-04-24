@@ -61,7 +61,6 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { createMarkdownStyles } from "@/styles/markdown-styles";
-import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import type { TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@server/shared/messages";
@@ -115,6 +114,13 @@ interface UserMessageProps {
   isLastInGroup?: boolean;
   disableOuterSpacing?: boolean;
 }
+
+type UserMessageInlineSegment =
+  | { kind: "text"; key: string; content: string }
+  | { kind: "inlineCode"; key: string; content: string };
+type UserMessageBlock =
+  | { kind: "text"; key: string; segments: UserMessageInlineSegment[] }
+  | { kind: "codeBlock"; key: string; content: string };
 
 const MessageOuterSpacingContext = createContext(false);
 
@@ -355,9 +361,52 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
   },
   text: {
     color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.body,
     fontSize: theme.fontSize.base,
     lineHeight: 22,
     overflowWrap: "anywhere",
+  },
+  textWithSpacing: {
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.body,
+    fontSize: theme.fontSize.base,
+    lineHeight: 22,
+    marginBottom: theme.spacing[2],
+    overflowWrap: "anywhere",
+  },
+  inlineCode: {
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.md,
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: 1,
+  },
+  codeBlock: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
+    overflowWrap: "anywhere",
+    padding: theme.spacing[3],
+  },
+  codeBlockWithSpacing: {
+    backgroundColor: theme.colors.surface1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 20,
+    marginBottom: theme.spacing[2],
+    overflowWrap: "anywhere",
+    padding: theme.spacing[3],
   },
   imagePreviewContainer: {
     flexDirection: "row",
@@ -447,6 +496,177 @@ function getUserMessageAttachmentLabel(attachment: AgentAttachment): string {
     default:
       return "";
   }
+}
+
+function parseUserMessageInlineCode(text: string, baseOffset = 0): UserMessageInlineSegment[] {
+  const segments: UserMessageInlineSegment[] = [];
+  const inlineCodePattern = /`([^`\n]+)`/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlineCodePattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const content = text.slice(lastIndex, match.index);
+      segments.push({
+        kind: "text",
+        key: `text-${baseOffset + lastIndex}-${content.length}`,
+        content,
+      });
+    }
+    const content = match[1] ?? "";
+    segments.push({
+      kind: "inlineCode",
+      key: `inline-code-${baseOffset + match.index}-${content.length}`,
+      content,
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    const content = text.slice(lastIndex);
+    segments.push({
+      kind: "text",
+      key: `text-${baseOffset + lastIndex}-${content.length}`,
+      content,
+    });
+  }
+
+  return segments.length > 0
+    ? segments
+    : [{ kind: "text", key: `text-${baseOffset}-${text.length}`, content: text }];
+}
+
+function pushUserMessageTextBlock(
+  blocks: UserMessageBlock[],
+  lines: string[],
+  baseOffset: number,
+): void {
+  if (lines.length === 0) {
+    return;
+  }
+  const content = lines.join("\n");
+  if (content.length === 0) {
+    return;
+  }
+  blocks.push({
+    kind: "text",
+    key: `text-block-${baseOffset}-${content.length}`,
+    segments: parseUserMessageInlineCode(content, baseOffset),
+  });
+}
+
+function parseUserMessageBlocks(message: string): UserMessageBlock[] {
+  const blocks: UserMessageBlock[] = [];
+  const textLines: string[] = [];
+  const codeLines: string[] = [];
+  let activeFence: { marker: "`" | "~"; length: number } | null = null;
+  let textStartOffset = 0;
+  let codeStartOffset = 0;
+
+  const lines = message.split("\n");
+  let cursor = 0;
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const lineStartOffset = cursor;
+    const lineBreakLength = lineIndex === lines.length - 1 ? 0 : 1;
+    const nextCursor = cursor + line.length + lineBreakLength;
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const fence = fenceMatch[1] ?? "";
+      const marker = fence[0] as "`" | "~";
+      if (activeFence && marker === activeFence.marker && fence.length >= activeFence.length) {
+        const content = codeLines.join("\n");
+        blocks.push({
+          kind: "codeBlock",
+          key: `code-block-${codeStartOffset}-${content.length}`,
+          content,
+        });
+        codeLines.length = 0;
+        activeFence = null;
+        cursor = nextCursor;
+        continue;
+      }
+
+      if (!activeFence) {
+        pushUserMessageTextBlock(blocks, textLines, textStartOffset);
+        textLines.length = 0;
+        codeStartOffset = nextCursor;
+        activeFence = { marker, length: fence.length };
+        cursor = nextCursor;
+        continue;
+      }
+    }
+
+    if (activeFence) {
+      codeLines.push(line);
+    } else {
+      if (textLines.length === 0) {
+        textStartOffset = lineStartOffset;
+      }
+      textLines.push(line);
+    }
+
+    cursor = nextCursor;
+  }
+
+  if (activeFence) {
+    const content = codeLines.join("\n");
+    blocks.push({
+      kind: "codeBlock",
+      key: `code-block-${codeStartOffset}-${content.length}`,
+      content,
+    });
+  } else {
+    pushUserMessageTextBlock(blocks, textLines, textStartOffset);
+  }
+
+  return blocks;
+}
+
+function UserMessageText({ message }: { message: string }) {
+  const blocks = useMemo(() => parseUserMessageBlocks(message), [message]);
+
+  return (
+    <>
+      {blocks.map((block, blockIndex) => {
+        const isLastBlock = blockIndex === blocks.length - 1;
+        if (block.kind === "codeBlock") {
+          return (
+            <Text
+              key={block.key}
+              selectable
+              style={
+                isLastBlock
+                  ? userMessageStylesheet.codeBlock
+                  : userMessageStylesheet.codeBlockWithSpacing
+              }
+            >
+              {block.content}
+            </Text>
+          );
+        }
+
+        return (
+          <Text
+            key={block.key}
+            selectable
+            style={isLastBlock ? userMessageStylesheet.text : userMessageStylesheet.textWithSpacing}
+          >
+            {block.segments.map((segment) => {
+              if (segment.kind === "inlineCode") {
+                return (
+                  <Text key={segment.key} style={userMessageStylesheet.inlineCode}>
+                    {segment.content}
+                  </Text>
+                );
+              }
+              return <React.Fragment key={segment.key}>{segment.content}</React.Fragment>;
+            })}
+          </Text>
+        );
+      })}
+    </>
+  );
 }
 
 export const UserMessage = memo(function UserMessage({
@@ -540,11 +760,7 @@ export const UserMessage = memo(function UserMessage({
               ))}
             </View>
           ) : null}
-          {hasText ? (
-            <Text selectable style={userMessageStylesheet.text}>
-              {message}
-            </Text>
-          ) : null}
+          {hasText ? <UserMessageText message={message} /> : null}
         </View>
         {hasText ? (
           <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
@@ -731,6 +947,24 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
+  },
+  containerSpacing: {
+    marginBottom: theme.spacing[4],
+  },
+  // Used in custom markdownRules for path chip styling
+  pathChip: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: 2,
+    marginRight: theme.spacing[1],
+    marginVertical: 2,
+  },
+  pathChipText: {
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: 13,
+    userSelect: isWeb ? "text" : "auto",
   },
   imageFrame: {
     width: "100%",
@@ -1867,13 +2101,13 @@ const speakMessageStylesheet = StyleSheet.create((theme) => ({
     marginBottom: theme.spacing[2],
   },
   headerLabel: {
-    fontFamily: Fonts.sans,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.normal,
+    fontFamily: theme.fontFamily.body,
+    fontSize: 12,
+    fontWeight: "500",
     color: theme.colors.foregroundMuted,
   },
   text: {
-    fontFamily: Fonts.sans,
+    fontFamily: theme.fontFamily.body,
     fontSize: theme.fontSize.base,
     lineHeight: 22,
     color: theme.colors.foreground,
@@ -1983,7 +2217,7 @@ const activityLogStylesheet = StyleSheet.create((theme) => ({
   metadataText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     lineHeight: 16,
   },
 }));
@@ -2115,7 +2349,7 @@ const compactionStylesheet = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   text: {
-    fontFamily: Fonts.sans,
+    fontFamily: theme.fontFamily.body,
     fontSize: 13,
     color: theme.colors.foregroundMuted,
   },

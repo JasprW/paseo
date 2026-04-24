@@ -1,6 +1,7 @@
 import { StyleSheet } from "react-native-unistyles";
 import {
   lightTheme,
+  claudeLightTheme,
   darkTheme,
   darkZincTheme,
   darkMidnightTheme,
@@ -11,6 +12,7 @@ import {
 StyleSheet.configure({
   themes: {
     light: lightTheme,
+    claudeLight: claudeLightTheme,
     dark: darkTheme,
     darkZinc: darkZincTheme,
     darkMidnight: darkMidnightTheme,
@@ -32,6 +34,7 @@ StyleSheet.configure({
 // Type augmentation for TypeScript
 interface AppThemes {
   light: typeof lightTheme;
+  claudeLight: typeof claudeLightTheme;
   dark: typeof darkTheme;
   darkZinc: typeof darkZincTheme;
   darkMidnight: typeof darkMidnightTheme;

@@ -9,24 +9,50 @@ import {
   useDesktopSettings,
 } from "@/desktop/settings/desktop-settings";
 import { isElectronRuntime } from "@/desktop/host";
-import { THEME_TO_UNISTYLES, type ThemeName } from "@/styles/theme";
+import {
+  DARK_THEME_NAMES,
+  LIGHT_THEME_NAMES,
+  getThemeColorScheme,
+  type DarkThemeName,
+  type LightThemeName,
+  type ThemeMode,
+  type ThemeName,
+} from "@/styles/theme";
+import {
+  DEFAULT_BODY_FONT_FAMILY,
+  DEFAULT_MONO_FONT_FAMILY,
+  DEFAULT_UI_FONT_FAMILY,
+  normalizeBodyFontFamily,
+  normalizeMonoFontFamily,
+  normalizeUiFontFamily,
+} from "@/styles/font-options";
 
 export const APP_SETTINGS_KEY = "@paseo:app-settings";
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
-const APP_SETTINGS_QUERY_KEY = ["app-settings"];
+const APP_SETTINGS_QUERY_KEY = ["app-settings"] as const;
 
 export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 
-const VALID_THEMES = new Set<string>([...Object.keys(THEME_TO_UNISTYLES), "auto"]);
-const VALID_SERVICE_URL_BEHAVIORS = new Set<ServiceUrlBehavior>(["ask", "in-app", "external"]);
 export const DEFAULT_TERMINAL_SCROLLBACK_LINES = 10_000;
 export const MIN_TERMINAL_SCROLLBACK_LINES = 0;
 export const MAX_TERMINAL_SCROLLBACK_LINES = 1_000_000;
+const VALID_THEME_MODES = new Set<string>(["system", "light", "dark"]);
+const VALID_LIGHT_THEMES = new Set<string>(LIGHT_THEME_NAMES);
+const VALID_DARK_THEMES = new Set<string>(DARK_THEME_NAMES);
+const VALID_LEGACY_THEMES = new Set<string>([...LIGHT_THEME_NAMES, ...DARK_THEME_NAMES, "auto"]);
+const VALID_SEND_BEHAVIORS = new Set<string>(["interrupt", "queue"]);
+const VALID_RELEASE_CHANNELS = new Set<string>(["stable", "beta"]);
+const VALID_SERVICE_URL_BEHAVIORS = new Set<string>(["ask", "in-app", "external"]);
 
 export interface AppSettings {
-  theme: ThemeName | "auto";
+  themeMode: ThemeMode;
+  lightTheme: LightThemeName;
+  darkTheme: DarkThemeName;
+  uiFont: string;
+  bodyFont: string;
+  monoFont: string;
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
   terminalScrollbackLines: number;
@@ -38,7 +64,12 @@ export interface Settings extends AppSettings {
 }
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
-  theme: "auto",
+  themeMode: "system",
+  lightTheme: "light",
+  darkTheme: "dark",
+  uiFont: DEFAULT_UI_FONT_FAMILY,
+  bodyFont: DEFAULT_BODY_FONT_FAMILY,
+  monoFont: DEFAULT_MONO_FONT_FAMILY,
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -114,8 +145,23 @@ export function useSettings(): UseSettingsReturn {
   const updateSettings = useCallback(
     async (updates: Partial<Settings>) => {
       const appUpdates: Partial<AppSettings> = {};
-      if (updates.theme !== undefined) {
-        appUpdates.theme = updates.theme;
+      if (updates.themeMode !== undefined) {
+        appUpdates.themeMode = updates.themeMode;
+      }
+      if (updates.lightTheme !== undefined) {
+        appUpdates.lightTheme = updates.lightTheme;
+      }
+      if (updates.darkTheme !== undefined) {
+        appUpdates.darkTheme = updates.darkTheme;
+      }
+      if (updates.uiFont !== undefined) {
+        appUpdates.uiFont = updates.uiFont;
+      }
+      if (updates.bodyFont !== undefined) {
+        appUpdates.bodyFont = updates.bodyFont;
+      }
+      if (updates.monoFont !== undefined) {
+        appUpdates.monoFont = updates.monoFont;
       }
       if (updates.sendBehavior !== undefined) {
         appUpdates.sendBehavior = updates.sendBehavior;
@@ -184,7 +230,11 @@ export async function saveAppSettings(input: {
   const current =
     input.queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY) ??
     (await loadAppSettingsFromStorage());
-  const next = { ...current, ...input.updates };
+  const next = normalizeAppSettings({
+    ...DEFAULT_CLIENT_SETTINGS,
+    ...current,
+    ...input.updates,
+  });
   input.queryClient.setQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY, next);
   await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
 }
@@ -193,17 +243,20 @@ export async function loadAppSettingsFromStorage(): Promise<AppSettings> {
   try {
     const stored = await AsyncStorage.getItem(APP_SETTINGS_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Partial<AppSettings>;
-      return { ...DEFAULT_CLIENT_SETTINGS, ...pickAppSettings(parsed) };
+      const parsed = JSON.parse(stored) as Record<string, unknown>;
+      return normalizeAppSettings({
+        ...DEFAULT_CLIENT_SETTINGS,
+        ...pickAppSettingsFromStored(parsed),
+      });
     }
 
     const legacyStored = await AsyncStorage.getItem(LEGACY_SETTINGS_KEY);
     if (legacyStored) {
       const legacyParsed = JSON.parse(legacyStored) as Record<string, unknown>;
-      const next = {
+      const next = normalizeAppSettings({
         ...DEFAULT_CLIENT_SETTINGS,
         ...pickAppSettingsFromLegacy(legacyParsed),
-      } satisfies AppSettings;
+      });
       await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(next));
       return next;
     }
@@ -242,32 +295,67 @@ export async function loadSettingsFromStorage(): Promise<Settings> {
   };
 }
 
-function pickAppSettings(stored: Partial<AppSettings>): Partial<AppSettings> {
-  const result: Partial<AppSettings> = {};
-  if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
-    result.theme = stored.theme;
-  }
-  if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
+function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {
+  return pickAppSettingsFromStored(legacy);
+}
+
+function normalizeAppSettings(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    uiFont: normalizeUiFontFamily(settings.uiFont),
+    bodyFont: normalizeBodyFontFamily(settings.bodyFont),
+    monoFont: normalizeMonoFontFamily(settings.monoFont),
+    terminalScrollbackLines:
+      parseTerminalScrollbackLines(settings.terminalScrollbackLines) ??
+      DEFAULT_TERMINAL_SCROLLBACK_LINES,
+  };
+}
+
+function pickAppSettingsFromStored(stored: Record<string, unknown>): Partial<AppSettings> {
+  const result: Partial<AppSettings> = {
+    ...pickThemeSettingsFromStored(stored),
+  };
+  if (isSendBehavior(stored.sendBehavior)) {
     result.sendBehavior = stored.sendBehavior;
   }
-  if (
-    typeof stored.serviceUrlBehavior === "string" &&
-    VALID_SERVICE_URL_BEHAVIORS.has(stored.serviceUrlBehavior)
-  ) {
+  if (isServiceUrlBehavior(stored.serviceUrlBehavior)) {
     result.serviceUrlBehavior = stored.serviceUrlBehavior;
   }
   const terminalScrollbackLines = parseTerminalScrollbackLines(stored.terminalScrollbackLines);
   if (terminalScrollbackLines !== null) {
     result.terminalScrollbackLines = terminalScrollbackLines;
   }
+  result.uiFont = normalizeUiFontFamily(stored.uiFont);
+  result.bodyFont = normalizeBodyFontFamily(stored.bodyFont);
+  result.monoFont = normalizeMonoFontFamily(stored.monoFont);
   return result;
 }
 
-function pickAppSettingsFromLegacy(legacy: Record<string, unknown>): Partial<AppSettings> {
+function pickThemeSettingsFromStored(stored: Record<string, unknown>): Partial<AppSettings> {
   const result: Partial<AppSettings> = {};
-  if (legacy.theme === "dark" || legacy.theme === "light" || legacy.theme === "auto") {
-    result.theme = legacy.theme;
+  const legacyTheme = readLegacyTheme(stored.theme);
+  const legacyConcreteTheme = legacyTheme === "auto" ? null : legacyTheme;
+
+  if (isThemeMode(stored.themeMode)) {
+    result.themeMode = stored.themeMode;
+  } else if (legacyConcreteTheme) {
+    result.themeMode = getThemeColorScheme(legacyConcreteTheme);
+  } else if (legacyTheme === "auto") {
+    result.themeMode = "system";
   }
+
+  if (isLightThemeName(stored.lightTheme)) {
+    result.lightTheme = stored.lightTheme;
+  } else if (isLightThemeName(legacyConcreteTheme)) {
+    result.lightTheme = legacyConcreteTheme;
+  }
+
+  if (isDarkThemeName(stored.darkTheme)) {
+    result.darkTheme = stored.darkTheme;
+  } else if (isDarkThemeName(legacyConcreteTheme)) {
+    result.darkTheme = legacyConcreteTheme;
+  }
+
   return result;
 }
 
@@ -304,7 +392,7 @@ async function loadLegacyDesktopSettingsFromStorage(): Promise<{
   if (typeof stored.manageBuiltInDaemon === "boolean") {
     result.manageBuiltInDaemon = stored.manageBuiltInDaemon;
   }
-  if (stored.releaseChannel === "stable" || stored.releaseChannel === "beta") {
+  if (isReleaseChannel(stored.releaseChannel)) {
     result.releaseChannel = stored.releaseChannel;
   }
 
@@ -322,4 +410,35 @@ async function loadRendererSettingsPayload(): Promise<Record<string, unknown> | 
     return null;
   }
   return JSON.parse(legacy) as Record<string, unknown>;
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return typeof value === "string" && VALID_THEME_MODES.has(value);
+}
+
+function isLightThemeName(value: unknown): value is LightThemeName {
+  return typeof value === "string" && VALID_LIGHT_THEMES.has(value);
+}
+
+function isDarkThemeName(value: unknown): value is DarkThemeName {
+  return typeof value === "string" && VALID_DARK_THEMES.has(value);
+}
+
+function readLegacyTheme(value: unknown): ThemeName | "auto" | null {
+  if (typeof value === "string" && VALID_LEGACY_THEMES.has(value)) {
+    return value as ThemeName | "auto";
+  }
+  return null;
+}
+
+function isSendBehavior(value: unknown): value is SendBehavior {
+  return typeof value === "string" && VALID_SEND_BEHAVIORS.has(value);
+}
+
+function isReleaseChannel(value: unknown): value is ReleaseChannel {
+  return typeof value === "string" && VALID_RELEASE_CHANNELS.has(value);
+}
+
+function isServiceUrlBehavior(value: unknown): value is ServiceUrlBehavior {
+  return typeof value === "string" && VALID_SERVICE_URL_BEHAVIORS.has(value);
 }

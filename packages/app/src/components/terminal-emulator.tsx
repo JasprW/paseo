@@ -117,6 +117,7 @@ interface TerminalEmulatorProps {
   testId?: string;
   xtermTheme?: ITheme;
   scrollbackLines: number;
+  fontFamily?: string;
   swipeGesturesEnabled?: boolean;
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
@@ -190,6 +191,7 @@ export default function TerminalEmulator({
     cursor: "#e6e6e6",
   },
   scrollbackLines,
+  fontFamily = "monospace",
   swipeGesturesEnabled = false,
   onSwipeLeft,
   onSwipeRight,
@@ -221,6 +223,8 @@ export default function TerminalEmulator({
   xtermThemeRef.current = xtermTheme;
   const onRendererReadyChangeRef = useRef(onRendererReadyChange);
   onRendererReadyChangeRef.current = onRendererReadyChange;
+  const fontFamilyRef = useRef(fontFamily);
+  fontFamilyRef.current = fontFamily;
   const mountCallbacksRef = useRef({
     onInput,
     onResize,
@@ -296,6 +300,10 @@ export default function TerminalEmulator({
   useEffect(() => {
     runtimeRef.current?.setScrollback({ lines: scrollbackLines });
   }, [scrollbackLines]);
+
+  useEffect(() => {
+    runtimeRef.current?.setFontFamily({ fontFamily });
+  }, [fontFamily]);
 
   useEffect(() => {
     ensureTerminalScrollbarStyle();
@@ -439,6 +447,7 @@ export default function TerminalEmulator({
       initialSnapshot: initialSnapshotRef.current,
       scrollback: scrollbackLinesRef.current,
       theme: mountedThemeRef.current,
+      fontFamily: fontFamilyRef.current,
     });
     onRendererReadyChangeRef.current?.({ streamKey, isReady: true });
 

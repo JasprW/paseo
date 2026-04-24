@@ -15,7 +15,6 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import Animated, { Easing, LinearTransition } from "react-native-reanimated";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
-import { Fonts } from "@/constants/theme";
 import * as Clipboard from "expo-clipboard";
 import { SvgXml } from "react-native-svg";
 import {
@@ -1162,7 +1161,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   codeText: {
     color: theme.colors.foreground,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     flexShrink: 0,
   },

@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { isWeb } from "@/constants/platform";
-import { Fonts } from "@/constants/theme";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -483,7 +482,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   monoHint: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foregroundMuted,
     marginTop: theme.spacing[1],
@@ -527,7 +526,7 @@ const sheetStyles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
   },
   codeText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
     color: theme.colors.foreground,
     lineHeight: 18,
@@ -567,6 +566,21 @@ const sheetStyles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  modelLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+  },
+  modelId: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    marginTop: 2,
+  },
+  emptyState: {
+    paddingVertical: theme.spacing[6],
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
 }));
 

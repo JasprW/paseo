@@ -1,5 +1,4 @@
 import type { Theme } from "./theme";
-import { Fonts } from "@/constants/theme";
 import { isWeb } from "@/constants/platform";
 
 const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
@@ -20,6 +19,7 @@ export function createMarkdownStyles(theme: Theme) {
     body: {
       ...webSelectableTextStyle,
       color: theme.colors.foreground,
+      fontFamily: theme.fontFamily.body,
       fontSize: theme.fontSize.base,
       lineHeight: 22,
       flexShrink: 1,
@@ -30,6 +30,7 @@ export function createMarkdownStyles(theme: Theme) {
     text: {
       ...webSelectableTextStyle,
       color: theme.colors.foreground,
+      fontFamily: theme.fontFamily.body,
       flexShrink: 1,
       minWidth: 0,
       overflowWrap: "anywhere" as const,
@@ -169,7 +170,7 @@ export function createMarkdownStyles(theme: Theme) {
       paddingVertical: 2,
       borderRadius: theme.borderRadius.md,
       borderWidth: 0,
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.sm,
     },
 
@@ -179,7 +180,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       padding: theme.spacing[3],
       borderRadius: theme.borderRadius.md,
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.sm,
       marginVertical: theme.spacing[2],
     },
@@ -192,7 +193,7 @@ export function createMarkdownStyles(theme: Theme) {
       borderRadius: theme.borderRadius.md,
       borderWidth: 1,
       borderColor: theme.colors.border,
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.sm,
       marginVertical: theme.spacing[3],
     },

@@ -684,6 +684,7 @@ export function TerminalPane({
               testId="terminal-surface"
               xtermTheme={xtermTheme}
               scrollbackLines={settings.terminalScrollbackLines}
+              fontFamily={theme.fontFamily.mono}
               swipeGesturesEnabled={swipeGesturesEnabled}
               initialSnapshot={initialSnapshot}
               onRendererReadyChange={handleRendererReadyChange}

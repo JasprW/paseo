@@ -1,4 +1,5 @@
 import { darkHighlightColors, lightHighlightColors } from "@getpaseo/highlight";
+import { DEFAULT_APP_FONT_FAMILIES } from "./font-options";
 
 export const baseColors = {
   // Base colors
@@ -106,7 +107,43 @@ export const baseColors = {
   },
 } as const;
 
-export type ThemeName = "light" | "dark" | "zinc" | "midnight" | "claude" | "ghostty";
+export const LIGHT_THEME_NAMES = ["light", "claude-light"] as const;
+export const DARK_THEME_NAMES = ["dark", "zinc", "midnight", "claude", "ghostty"] as const;
+
+export type ThemeColorScheme = "light" | "dark";
+export type LightThemeName = (typeof LIGHT_THEME_NAMES)[number];
+export type DarkThemeName = (typeof DARK_THEME_NAMES)[number];
+export type ThemeName = LightThemeName | DarkThemeName;
+export type ThemeMode = "system" | ThemeColorScheme;
+
+export interface ThemeSelection {
+  themeMode: ThemeMode;
+  lightTheme: LightThemeName;
+  darkTheme: DarkThemeName;
+}
+
+const THEME_COLOR_SCHEMES: Record<ThemeName, ThemeColorScheme> = {
+  light: "light",
+  "claude-light": "light",
+  dark: "dark",
+  zinc: "dark",
+  midnight: "dark",
+  claude: "dark",
+  ghostty: "dark",
+};
+
+export function getThemeColorScheme(themeName: ThemeName): ThemeColorScheme {
+  return THEME_COLOR_SCHEMES[themeName];
+}
+
+export function resolveThemeName(
+  selection: ThemeSelection,
+  systemColorScheme: ThemeColorScheme | null | undefined,
+): ThemeName {
+  const resolvedColorScheme =
+    selection.themeMode === "system" ? (systemColorScheme ?? "light") : selection.themeMode;
+  return resolvedColorScheme === "light" ? selection.lightTheme : selection.darkTheme;
+}
 
 // Diff stat colors — light uses muted tones, dark uses the brighter palette values
 const lightDiffColors = {
@@ -213,6 +250,57 @@ const lightSemanticColors = {
     brightMagenta: "#a855f7",
     brightCyan: "#06b6d4",
     brightWhite: "#fafafa",
+  },
+} as const;
+
+const claudeLightSemanticColors = {
+  ...lightSemanticColors,
+
+  surface0: "#fdfcf8",
+  surface1: "#faf8f2",
+  surface2: "#f1eee8",
+  surface3: "#e7e2d9",
+  surface4: "#d8d0c4",
+  surfaceDiffEmpty: "#f5f2ec",
+  surfaceSidebar: "#f7f5ef",
+  surfaceSidebarHover: "#eeeae2",
+  surfaceWorkspace: "#fdfcf8",
+
+  foreground: "#2f2d2a",
+  foregroundMuted: "#7a746c",
+
+  scrollbarHandle: "#8a837a",
+
+  border: "#e4ded4",
+  borderAccent: "#eee8df",
+
+  accent: "#d97757",
+  accentBright: "#e89a7f",
+
+  background: "#fdfcf8",
+  popover: "#fdfcf8",
+  popoverForeground: "#2f2d2a",
+  primary: "#2f2d2a",
+  primaryForeground: "#fdfcf8",
+  secondary: "#f1eee8",
+  secondaryForeground: "#2f2d2a",
+  muted: "#f1eee8",
+  mutedForeground: "#7a746c",
+  accentBorder: "#eee8df",
+  input: "#f7f5ef",
+  ring: "#d97757",
+
+  terminal: {
+    ...lightSemanticColors.terminal,
+    background: "#fdfcf8",
+    foreground: "#2f2d2a",
+    cursor: "#2f2d2a",
+    cursorAccent: "#fdfcf8",
+    selectionForeground: "#2f2d2a",
+    black: "#2f2d2a",
+    white: "#fdfcf8",
+    brightBlack: "#5f5a53",
+    brightWhite: "#fffefa",
   },
 } as const;
 
@@ -490,6 +578,7 @@ const commonTheme = {
   lineHeight: LINE_HEIGHT,
   iconSize: ICON_SIZE,
   fontWeight: FONT_WEIGHT,
+  fontFamily: DEFAULT_APP_FONT_FAMILIES,
   borderRadius: BORDER_RADIUS,
   borderWidth: BORDER_WIDTH,
   opacity: OPACITY,
@@ -535,52 +624,81 @@ export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
 export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
 export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
 
-export const lightTheme = {
-  colorScheme: "light" as const,
-  colors: {
-    ...lightSemanticColors,
-    palette: baseColors,
-    syntax: lightHighlightColors,
+const lightShadow = {
+  sm: {
+    shadowColor: "rgba(0, 0, 0, 0.02)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
   },
-  shadow: {
-    sm: {
-      shadowColor: "rgba(0, 0, 0, 0.02)",
-      shadowOffset: { width: 0, height: 2 },
-      shadowRadius: 8,
-      elevation: 2,
-    },
-    md: {
-      shadowColor: "rgba(0, 0, 0, 0.04)",
-      shadowOffset: { width: 0, height: 4 },
-      shadowRadius: 16,
-      elevation: 4,
-    },
-    lg: {
-      shadowColor: "rgba(0, 0, 0, 0.08)",
-      shadowOffset: { width: 0, height: 8 },
-      shadowRadius: 24,
-      elevation: 8,
-    },
+  md: {
+    shadowColor: "rgba(0, 0, 0, 0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 16,
+    elevation: 4,
   },
-  ...commonTheme,
+  lg: {
+    shadowColor: "rgba(0, 0, 0, 0.08)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
 } as const;
+
+type WidenStringLiterals<T> = {
+  readonly [K in keyof T]: T[K] extends string
+    ? string
+    : T[K] extends Record<string, unknown>
+      ? WidenStringLiterals<T[K]>
+      : T[K];
+};
+
+type LightSemanticColors = WidenStringLiterals<typeof lightSemanticColors>;
+
+function buildLightTheme(semanticColors: LightSemanticColors) {
+  return {
+    colorScheme: "light" as const,
+    colors: {
+      ...semanticColors,
+      palette: baseColors,
+      syntax: lightHighlightColors,
+    },
+    shadow: lightShadow,
+    ...commonTheme,
+  } as const;
+}
+
+export const lightTheme = buildLightTheme(lightSemanticColors);
+export const claudeLightTheme = buildLightTheme(claudeLightSemanticColors);
 
 // Keep compatibility with existing code
 export const theme = darkTheme;
 
 // Export a union type that works for both themes
-export type Theme = typeof darkTheme | typeof lightTheme;
+export type Theme = typeof darkTheme | typeof lightTheme | typeof claudeLightTheme;
 
-type UnistylesThemeKey =
+export type UnistylesThemeKey =
   | "light"
+  | "claudeLight"
   | "dark"
   | "darkZinc"
   | "darkMidnight"
   | "darkClaude"
   | "darkGhostty";
 
+export const UNISTYLES_THEME_KEYS: readonly UnistylesThemeKey[] = [
+  "light",
+  "claudeLight",
+  "dark",
+  "darkZinc",
+  "darkMidnight",
+  "darkClaude",
+  "darkGhostty",
+];
+
 export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
   light: "light",
+  "claude-light": "claudeLight",
   dark: "dark",
   zinc: "darkZinc",
   midnight: "darkMidnight",
@@ -590,6 +708,7 @@ export const THEME_TO_UNISTYLES: Record<ThemeName, UnistylesThemeKey> = {
 
 export const THEME_SWATCHES: Record<ThemeName, string> = {
   light: "#ffffff",
+  "claude-light": "#d97757",
   dark: "#2D8B62",
   zinc: "#808080",
   midnight: "#4A6BA8",

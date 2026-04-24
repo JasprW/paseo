@@ -56,7 +56,6 @@ import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { DiffScroll } from "@/components/diff-scroll";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
-import { Fonts } from "@/constants/theme";
 import { shouldAnchorHeaderBeforeCollapse } from "@/git/diff-scroll";
 import {
   buildSplitDiffRows,
@@ -2477,7 +2476,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
     fontSize: theme.fontSize.xs,
     lineHeight: theme.lineHeight.diff,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     color: theme.colors.foregroundMuted,
     userSelect: "none",
   },
@@ -2492,7 +2491,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[3],
     fontSize: theme.fontSize.xs,
     lineHeight: theme.lineHeight.diff,
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     color: theme.colors.foreground,
     userSelect: "text",
   },

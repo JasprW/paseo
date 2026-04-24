@@ -9,12 +9,10 @@ import {
   View,
 } from "react-native";
 import invariant from "tiny-invariant";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Fonts } from "@/constants/theme";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { usePaneContext } from "@/panels/pane-context";
 import type { PanelDescriptor, PanelRegistration } from "@/panels/panel-registry";
 import { buildWorkspaceTabPersistenceKey } from "@/stores/workspace-tabs-store";
-import type { Theme } from "@/styles/theme";
 import {
   useWorkspaceSetupStore,
   type WorkspaceSetupSnapshot,
@@ -63,13 +61,14 @@ function useSetupPanelDescriptor(
 type CommandStatus = "running" | "completed" | "failed";
 
 function CommandStatusIcon({ status }: { status: CommandStatus }) {
+  const { theme } = useUnistyles();
   if (status === "running") {
-    return <ThemedActivityIndicator size={14} uniProps={foregroundColorMapping} />;
+    return <ActivityIndicator size={14} color={theme.colors.foreground} />;
   }
   if (status === "completed") {
-    return <ThemedCheckCircle2 size={14} uniProps={greenColorMapping} />;
+    return <CheckCircle2 size={14} color={theme.colors.palette.green[500]} />;
   }
-  return <ThemedCircleAlert size={14} uniProps={redColorMapping} />;
+  return <CircleAlert size={14} color={theme.colors.palette.red[500]} />;
 }
 
 function formatDuration(ms: number): string {
@@ -150,6 +149,7 @@ function buildCommandRowState(args: BuildCommandRowPropsArgs) {
 }
 
 function SetupPanel() {
+  const { theme } = useUnistyles();
   const { serverId, target } = usePaneContext();
   invariant(target.kind === "setup", "SetupPanel requires setup target");
 
@@ -229,7 +229,7 @@ function SetupPanel() {
 
       {isWaiting ? (
         <View style={styles.waitingContainer}>
-          <ThemedActivityIndicator size="large" uniProps={foregroundMutedColorMapping} />
+          <ActivityIndicator size="large" color={theme.colors.foregroundMuted} />
           <Text style={styles.waitingText}>Setting up workspace...</Text>
         </View>
       ) : null}
@@ -384,13 +384,12 @@ export const setupPanelRegistration: PanelRegistration<"setup"> = {
 };
 
 function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
+  const { theme } = useUnistyles();
   const chevronStyle = useMemo(
     () => [styles.chevron, showDetail && styles.chevronExpanded],
     [showDetail],
   );
-  return (
-    <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} style={chevronStyle} />
-  );
+  return <ChevronRight size={14} color={theme.colors.foregroundMuted} style={chevronStyle} />;
 }
 
 function StandaloneLogView({ commands, log }: { commands: SetupCommand[]; log: string }) {
@@ -428,24 +427,6 @@ function TopLevelSetupError({
     </View>
   );
 }
-
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const ThemedCheckCircle2 = withUnistyles(CheckCircle2);
-const ThemedCircleAlert = withUnistyles(CircleAlert);
-const ThemedChevronRight = withUnistyles(ChevronRight);
-
-const foregroundColorMapping = (theme: Theme) => ({
-  color: theme.colors.foreground,
-});
-const foregroundMutedColorMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-});
-const greenColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.green[500],
-});
-const redColorMapping = (theme: Theme) => ({
-  color: theme.colors.palette.red[500],
-});
 
 const styles = StyleSheet.create((theme) => ({
   container: {
@@ -540,7 +521,7 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
   },
   logText: {
-    fontFamily: Fonts.mono,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
     color: theme.colors.foreground,
