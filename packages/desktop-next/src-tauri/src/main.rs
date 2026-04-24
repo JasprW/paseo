@@ -328,14 +328,22 @@ fn resolve_daemon_mode() -> DaemonMode {
         return DaemonMode::StableConnectOnly;
     }
 
-    match env::var("PASEO_NEXT_DAEMON_MODE") {
-        Ok(value) => match value.trim().to_ascii_lowercase().as_str() {
-            "stable" | "production" | "external" | "connect-only" | "connect_only" => {
-                DaemonMode::StableConnectOnly
-            }
-            _ => DaemonMode::Isolated,
-        },
-        Err(_) => DaemonMode::Isolated,
+    if let Ok(value) = env::var("PASEO_NEXT_DAEMON_MODE") {
+        return parse_daemon_mode(&value).unwrap_or(DaemonMode::Isolated);
+    }
+
+    option_env!("PASEO_NEXT_DEFAULT_DAEMON_MODE")
+        .and_then(parse_daemon_mode)
+        .unwrap_or(DaemonMode::Isolated)
+}
+
+fn parse_daemon_mode(value: &str) -> Option<DaemonMode> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "stable" | "production" | "external" | "connect-only" | "connect_only" => {
+            Some(DaemonMode::StableConnectOnly)
+        }
+        "isolated" | "dev" | "development" => Some(DaemonMode::Isolated),
+        _ => None,
     }
 }
 
