@@ -2,16 +2,16 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 
 /**
- * VS Code-style titlebar drag region for Electron.
+ * VS Code-style titlebar drag region for desktop shells.
  *
  * Copied from VS Code at commit daa0a70:
  *   - titlebarPart.ts:463-464  → prepend(container, $('div.titlebar-drag-region'))
  *   - titlebarpart.css:57-64   → position: absolute, full size, -webkit-app-region: drag
  *   - titlebarpart.css:249-260 → top-edge resizer, no-drag, 4px
  *
- * VS Code's drag region is a static DOM element — no z-index, no pointer-events,
- * no state, no event listeners. Interactive elements get no-drag from their own
- * CSS (global backstop in index.html). The drag region never re-renders.
+ * Electron uses -webkit-app-region directly. Tauri intentionally uses a Paseo
+ * data marker instead of data-tauri-drag-region so the bridge can apply a
+ * movement threshold before starting a native window drag.
  *
  * The resizer is Windows/Linux only (titlebarpart.css:249 scopes to .windows/.linux).
  * On macOS, Electron handles edge resize natively.
@@ -49,9 +49,13 @@ export function TitlebarDragRegion() {
   return (
     <>
       {/* Drag overlay — VS Code .titlebar-drag-region (titlebarpart.css:57-64) */}
-      <div data-tauri-drag-region style={DRAG_OVERLAY_STYLE} />
+      <div data-paseo-window-drag-region style={DRAG_OVERLAY_STYLE} />
       {/* Top-edge resizer — VS Code .resizer (titlebarpart.css:249-256) */}
-      <div data-tauri-drag-region="false" style={TOP_RESIZER_STYLE} />
+      <div
+        data-paseo-window-drag-region="false"
+        data-tauri-drag-region="false"
+        style={TOP_RESIZER_STYLE}
+      />
     </>
   );
 }

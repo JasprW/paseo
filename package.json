@@ -68,6 +68,7 @@
     "dev:desktop-next": "npm run dev --workspace=@getpaseo/desktop-next",
     "dev:desktop-next:stable": "npm run dev:stable --workspace=@getpaseo/desktop-next",
     "build:desktop-next": "npm run version:sync-internal && npm run build --workspace=@getpaseo/desktop-next",
+    "build:desktop-next:stable": "npm run version:sync-internal && npm run build:stable --workspace=@getpaseo/desktop-next",
     "db:query": "npm run db:query --workspace=@getpaseo/server --",
     "cli": "npx tsx packages/cli/src/index.js",
     "version": "npm run version:sync-internal && npm run release:prepare && git add -A",

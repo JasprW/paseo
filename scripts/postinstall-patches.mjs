@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 // In CI we often install a single workspace (e.g. server/relay/website). Only apply patches
@@ -12,6 +12,10 @@ const patchedPackages = [
   {
     nodeModulesPath: "node_modules/react-native-gesture-handler",
     patchPrefix: "react-native-gesture-handler+",
+  },
+  {
+    nodeModulesPath: "node_modules/node-pty",
+    patchPrefix: "node-pty+",
   },
 ];
 
@@ -34,23 +38,25 @@ if (patchFilesToApply.length === 0) {
 }
 
 const isWindows = process.platform === "win32";
-const cmd = isWindows ? "patch-package.cmd" : "patch-package";
-const tempPatchDir = join(".tmp", `postinstall-patches-${process.pid}`);
+const binName = isWindows ? "patch-package.cmd" : "patch-package";
+const localBin = join(process.cwd(), "node_modules", ".bin", binName);
+const cmd = existsSync(localBin) ? localBin : binName;
+const patchDir = mkdtempSync(".paseo-patches-");
+let exitStatus = 1;
 
-mkdirSync(tempPatchDir, { recursive: true });
-for (const patchFile of patchFilesToApply) {
-  copyFileSync(join("patches", patchFile), join(tempPatchDir, patchFile));
-}
-
-let result;
 try {
-  result = spawnSync(cmd, ["--patch-dir", tempPatchDir], {
+  for (const patchFile of patchFilesToApply) {
+    copyFileSync(join("patches", patchFile), join(patchDir, patchFile));
+  }
+
+  const result = spawnSync(cmd, ["--patch-dir", patchDir], {
     shell: isWindows,
     stdio: "inherit",
     windowsHide: true,
   });
+  exitStatus = result.status ?? 1;
 } finally {
-  rmSync(tempPatchDir, { recursive: true, force: true });
+  rmSync(patchDir, { recursive: true, force: true });
 }
 
-process.exit(result.status ?? 1);
+process.exit(exitStatus);

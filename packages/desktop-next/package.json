@@ -18,6 +18,7 @@
     "dev": "./scripts/dev.sh",
     "dev:stable": "PASEO_NEXT_DAEMON_MODE=stable ./scripts/dev.sh",
     "build": "npm --prefix ../.. run build:daemon && npm run build:web --workspace=@getpaseo/app && tauri build --bundles app",
+    "build:stable": "PASEO_NEXT_DEFAULT_DAEMON_MODE=stable npm run build",
     "typecheck": "cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {

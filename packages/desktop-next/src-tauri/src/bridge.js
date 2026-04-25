@@ -29,6 +29,11 @@
     });
   }
 
+  var PASEO_DRAG_REGION_ATTR = "data-paseo-window-drag-region";
+  var LEGACY_TAURI_DRAG_REGION_ATTR = "data-tauri-drag-region";
+  var DRAG_START_DISTANCE_PX = 8;
+  var DRAG_START_DISTANCE_SQUARED = DRAG_START_DISTANCE_PX * DRAG_START_DISTANCE_PX;
+
   function isInteractiveDragTarget(target) {
     if (!target || target.nodeType !== Node.ELEMENT_NODE) {
       return false;
@@ -36,6 +41,7 @@
     return Boolean(
       target.closest(
         [
+          "[" + PASEO_DRAG_REGION_ATTR + "='false']",
           "[data-tauri-drag-region='false']",
           "a",
           "button",
@@ -68,11 +74,12 @@
       if (!element || typeof element.getAttribute !== "function") {
         continue;
       }
-      var region = element.getAttribute("data-tauri-drag-region");
-      if (region === "false") {
+      var paseoRegion = element.getAttribute(PASEO_DRAG_REGION_ATTR);
+      var legacyTauriRegion = element.getAttribute(LEGACY_TAURI_DRAG_REGION_ATTR);
+      if (paseoRegion === "false" || legacyTauriRegion === "false") {
         return false;
       }
-      if (region !== null) {
+      if (paseoRegion !== null || legacyTauriRegion !== null) {
         return true;
       }
     }
@@ -80,6 +87,52 @@
   }
 
   function installTauriDragBridge() {
+    var pendingDrag = null;
+
+    function removePendingDragListeners() {
+      window.removeEventListener("mousemove", handlePendingDragMouseMove, true);
+      window.removeEventListener("mouseup", handlePendingDragMouseUp, true);
+      window.removeEventListener("blur", cancelPendingDrag, true);
+    }
+
+    function cancelPendingDrag() {
+      if (!pendingDrag) {
+        return;
+      }
+      pendingDrag = null;
+      removePendingDragListeners();
+    }
+
+    function handlePendingDragMouseMove(event) {
+      if (!pendingDrag) {
+        return;
+      }
+      if ((event.buttons & 1) !== 1) {
+        cancelPendingDrag();
+        return;
+      }
+
+      var deltaX = event.clientX - pendingDrag.clientX;
+      var deltaY = event.clientY - pendingDrag.clientY;
+      if (deltaX * deltaX + deltaY * deltaY < DRAG_START_DISTANCE_SQUARED) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      cancelPendingDrag();
+      void invoke("window_start_dragging");
+    }
+
+    function handlePendingDragMouseUp(event) {
+      if (!pendingDrag) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      cancelPendingDrag();
+    }
+
     document.addEventListener(
       "mousedown",
       function (event) {
@@ -90,12 +143,20 @@
         event.preventDefault();
         event.stopPropagation();
 
+        cancelPendingDrag();
+
         if (event.detail === 2) {
           void invoke("window_toggle_maximize");
           return;
         }
 
-        void invoke("window_start_dragging");
+        pendingDrag = {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        };
+        window.addEventListener("mousemove", handlePendingDragMouseMove, true);
+        window.addEventListener("mouseup", handlePendingDragMouseUp, true);
+        window.addEventListener("blur", cancelPendingDrag, true);
       },
       true,
     );
