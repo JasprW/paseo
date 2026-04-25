@@ -80,6 +80,7 @@ import {
 } from "@/utils/assistant-image-metadata";
 import { setAssistantMarkdownBlockHeight } from "@/utils/assistant-message-height-estimate";
 import { resolveAssistantImageSource } from "@/utils/assistant-image-source";
+import { useAppSettings } from "@/hooks/use-settings";
 import {
   createPreviewAttachmentId,
   getFileNameFromPath,
@@ -123,6 +124,9 @@ type UserMessageBlock =
   | { kind: "codeBlock"; key: string; content: string };
 
 const MessageOuterSpacingContext = createContext(false);
+const USER_MESSAGE_TEXT_LINE_HEIGHT = 22;
+const USER_MESSAGE_CODE_LINE_HEIGHT = 20;
+const SPEAK_MESSAGE_TEXT_LINE_HEIGHT = 22;
 
 export function MessageOuterSpacingProvider({
   disableOuterSpacing,
@@ -166,9 +170,12 @@ interface MarkdownWithStableRendererProps {
 
 const MarkdownWithStableRenderer = Markdown as ComponentType<MarkdownWithStableRendererProps>;
 const ThemedMarkdown = withUnistyles(MarkdownWithStableRenderer);
-const markdownStyleMapping = (theme: Theme): Partial<MarkdownWithStableRendererProps> => ({
-  style: createMarkdownStyles(theme),
-});
+function createMarkdownStyleMapping(lineHeightMultiplier: number) {
+  return (theme: Theme) =>
+    ({
+      style: createMarkdownStyles(theme, { lineHeightMultiplier }),
+    }) as never;
+}
 
 const ThemedMicVocal = withUnistyles(MicVocal);
 const ThemedTodoCheckIcon = withUnistyles(Check);
@@ -623,8 +630,39 @@ function parseUserMessageBlocks(message: string): UserMessageBlock[] {
   return blocks;
 }
 
-function UserMessageText({ message }: { message: string }) {
+function UserMessageText({
+  message,
+  lineHeightMultiplier,
+}: {
+  message: string;
+  lineHeightMultiplier: number;
+}) {
   const blocks = useMemo(() => parseUserMessageBlocks(message), [message]);
+  const lineHeightStyles = useMemo(
+    () => ({
+      text: [
+        userMessageStylesheet.text,
+        { lineHeight: USER_MESSAGE_TEXT_LINE_HEIGHT * lineHeightMultiplier },
+      ],
+      textWithSpacing: [
+        userMessageStylesheet.textWithSpacing,
+        { lineHeight: USER_MESSAGE_TEXT_LINE_HEIGHT * lineHeightMultiplier },
+      ],
+      inlineCode: [
+        userMessageStylesheet.inlineCode,
+        { lineHeight: USER_MESSAGE_TEXT_LINE_HEIGHT * lineHeightMultiplier },
+      ],
+      codeBlock: [
+        userMessageStylesheet.codeBlock,
+        { lineHeight: USER_MESSAGE_CODE_LINE_HEIGHT * lineHeightMultiplier },
+      ],
+      codeBlockWithSpacing: [
+        userMessageStylesheet.codeBlockWithSpacing,
+        { lineHeight: USER_MESSAGE_CODE_LINE_HEIGHT * lineHeightMultiplier },
+      ],
+    }),
+    [lineHeightMultiplier],
+  );
 
   return (
     <>
@@ -636,9 +674,7 @@ function UserMessageText({ message }: { message: string }) {
               key={block.key}
               selectable
               style={
-                isLastBlock
-                  ? userMessageStylesheet.codeBlock
-                  : userMessageStylesheet.codeBlockWithSpacing
+                isLastBlock ? lineHeightStyles.codeBlock : lineHeightStyles.codeBlockWithSpacing
               }
             >
               {block.content}
@@ -650,12 +686,12 @@ function UserMessageText({ message }: { message: string }) {
           <Text
             key={block.key}
             selectable
-            style={isLastBlock ? userMessageStylesheet.text : userMessageStylesheet.textWithSpacing}
+            style={isLastBlock ? lineHeightStyles.text : lineHeightStyles.textWithSpacing}
           >
             {block.segments.map((segment) => {
               if (segment.kind === "inlineCode") {
                 return (
-                  <Text key={segment.key} style={userMessageStylesheet.inlineCode}>
+                  <Text key={segment.key} style={lineHeightStyles.inlineCode}>
                     {segment.content}
                   </Text>
                 );
@@ -678,6 +714,7 @@ export const UserMessage = memo(function UserMessage({
   isLastInGroup = true,
   disableOuterSpacing,
 }: UserMessageProps) {
+  const { settings } = useAppSettings();
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
@@ -760,7 +797,12 @@ export const UserMessage = memo(function UserMessage({
               ))}
             </View>
           ) : null}
-          {hasText ? <UserMessageText message={message} /> : null}
+          {hasText ? (
+            <UserMessageText
+              message={message}
+              lineHeightMultiplier={settings.chatLineHeightMultiplier}
+            />
+          ) : null}
         </View>
         {hasText ? (
           <View style={trailingRowStyle} pointerEvents={showTrailingRow ? "auto" : "none"}>
@@ -1691,6 +1733,7 @@ interface MemoizedMarkdownBlockProps {
   rules: RenderRules;
   parser: MarkdownIt;
   onLinkPress: (url: string) => boolean;
+  lineHeightMultiplier: number;
 }
 
 const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
@@ -1698,7 +1741,12 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   rules,
   parser,
   onLinkPress,
+  lineHeightMultiplier,
 }: MemoizedMarkdownBlockProps) {
+  const markdownStyleMapping = useMemo(
+    () => createMarkdownStyleMapping(lineHeightMultiplier),
+    [lineHeightMultiplier],
+  );
   return (
     <ThemedMarkdown
       uniProps={markdownStyleMapping}
@@ -1801,6 +1849,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   client,
   spacing = "default",
 }: AssistantMessageProps) {
+  const { settings } = useAppSettings();
   const markdownParser = useMemo(() => {
     const parser = MarkdownIt({ typographer: true, linkify: true });
     const defaultValidateLink = parser.validateLink.bind(parser);
@@ -2074,6 +2123,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             rules={markdownRules}
             parser={markdownParser}
             onLinkPress={handleMarkdownLinkPress}
+            lineHeightMultiplier={settings.chatLineHeightMultiplier}
           />
         </AssistantMessageBlockContainer>
       ))}
@@ -2119,6 +2169,7 @@ export const SpeakMessage = memo(function SpeakMessage({
   timestamp: _timestamp,
   disableOuterSpacing,
 }: SpeakMessageProps) {
+  const { settings } = useAppSettings();
   const resolvedDisableOuterSpacing = useDisableOuterSpacing(disableOuterSpacing);
   const containerStyle = useMemo(
     () => [
@@ -2127,6 +2178,13 @@ export const SpeakMessage = memo(function SpeakMessage({
     ],
     [resolvedDisableOuterSpacing],
   );
+  const textStyle = useMemo(
+    () => [
+      speakMessageStylesheet.text,
+      { lineHeight: SPEAK_MESSAGE_TEXT_LINE_HEIGHT * settings.chatLineHeightMultiplier },
+    ],
+    [settings.chatLineHeightMultiplier],
+  );
 
   return (
     <View testID="speak-message" style={containerStyle}>
@@ -2134,7 +2192,7 @@ export const SpeakMessage = memo(function SpeakMessage({
         <ThemedMicVocal size={12} uniProps={foregroundMutedColorMapping} />
         <Text style={speakMessageStylesheet.headerLabel}>Spoke</Text>
       </View>
-      <Text style={speakMessageStylesheet.text}>{message}</Text>
+      <Text style={textStyle}>{message}</Text>
     </View>
   );
 });

@@ -3,6 +3,14 @@ import { isWeb } from "@/constants/platform";
 
 const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
 
+interface MarkdownStyleOptions {
+  lineHeightMultiplier?: number;
+}
+
+function multiplyLineHeight(lineHeight: number, multiplier = 1): number {
+  return lineHeight * multiplier;
+}
+
 /**
  * Creates comprehensive markdown styles for react-native-markdown-display.
  *
@@ -10,7 +18,9 @@ const webSelectableTextStyle = isWeb ? { userSelect: "text" as const } : {};
  *   const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
  *   <Markdown style={markdownStyles}>{content}</Markdown>
  */
-export function createMarkdownStyles(theme: Theme) {
+export function createMarkdownStyles(theme: Theme, options: MarkdownStyleOptions = {}) {
+  const lineHeightMultiplier = options.lineHeightMultiplier ?? 1;
+
   return {
     // =========================================================================
     // BASE STYLES
@@ -21,7 +31,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       fontFamily: theme.fontFamily.body,
       fontSize: theme.fontSize.base,
-      lineHeight: 22,
+      lineHeight: multiplyLineHeight(22, lineHeightMultiplier),
       flexShrink: 1,
       minWidth: 0,
       width: "100%" as const,
@@ -59,7 +69,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
-      lineHeight: 32,
+      lineHeight: multiplyLineHeight(32, lineHeightMultiplier),
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
@@ -72,7 +82,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[6],
       marginBottom: theme.spacing[3],
-      lineHeight: 28,
+      lineHeight: multiplyLineHeight(28, lineHeightMultiplier),
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
       paddingBottom: theme.spacing[2],
@@ -85,7 +95,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: multiplyLineHeight(26, lineHeightMultiplier),
     },
 
     heading4: {
@@ -95,7 +105,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: multiplyLineHeight(24, lineHeightMultiplier),
     },
 
     heading5: {
@@ -105,7 +115,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foreground,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: multiplyLineHeight(22, lineHeightMultiplier),
     },
 
     heading6: {
@@ -115,7 +125,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foregroundMuted,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 20,
+      lineHeight: multiplyLineHeight(20, lineHeightMultiplier),
       textTransform: "uppercase" as const,
       letterSpacing: 0.5,
     },
@@ -284,7 +294,7 @@ export function createMarkdownStyles(theme: Theme) {
       color: theme.colors.foregroundMuted,
       marginRight: 4,
       fontSize: theme.fontSize.base,
-      lineHeight: 22,
+      lineHeight: multiplyLineHeight(22, lineHeightMultiplier),
     },
 
     ordered_list_icon: {
@@ -293,7 +303,7 @@ export function createMarkdownStyles(theme: Theme) {
       marginRight: 4,
       fontSize: theme.fontSize.base,
       fontWeight: theme.fontWeight.normal,
-      lineHeight: 22,
+      lineHeight: multiplyLineHeight(22, lineHeightMultiplier),
       minWidth: 12,
     },
 
@@ -346,8 +356,9 @@ export function createMarkdownStyles(theme: Theme) {
  * Creates a smaller variant of markdown styles for compact UI elements
  * like thought bubbles, tooltips, or side panels.
  */
-export function createCompactMarkdownStyles(theme: Theme) {
-  const baseStyles = createMarkdownStyles(theme);
+export function createCompactMarkdownStyles(theme: Theme, options: MarkdownStyleOptions = {}) {
+  const lineHeightMultiplier = options.lineHeightMultiplier ?? 1;
+  const baseStyles = createMarkdownStyles(theme, options);
 
   return {
     ...baseStyles,
@@ -355,7 +366,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
     body: {
       ...baseStyles.body,
       fontSize: theme.fontSize.sm,
-      lineHeight: 20,
+      lineHeight: multiplyLineHeight(20, lineHeightMultiplier),
     },
 
     heading1: {
@@ -363,7 +374,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.xl,
       marginTop: theme.spacing[4],
       marginBottom: theme.spacing[2],
-      lineHeight: 26,
+      lineHeight: multiplyLineHeight(26, lineHeightMultiplier),
     },
 
     heading2: {
@@ -371,7 +382,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.lg,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[2],
-      lineHeight: 24,
+      lineHeight: multiplyLineHeight(24, lineHeightMultiplier),
     },
 
     heading3: {
@@ -379,7 +390,7 @@ export function createCompactMarkdownStyles(theme: Theme) {
       fontSize: theme.fontSize.base,
       marginTop: theme.spacing[3],
       marginBottom: theme.spacing[1],
-      lineHeight: 22,
+      lineHeight: multiplyLineHeight(22, lineHeightMultiplier),
     },
 
     paragraph: {

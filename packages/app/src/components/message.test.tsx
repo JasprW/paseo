@@ -57,6 +57,10 @@ vi.mock("@/constants/platform", () => ({
   isNative: false,
 }));
 
+vi.mock("@/hooks/use-settings", () => ({
+  useAppSettings: () => ({ settings: { chatLineHeightMultiplier: 1 } }),
+}));
+
 vi.mock("react-native-reanimated", () => ({
   default: {
     View: "div",

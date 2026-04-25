@@ -29,6 +29,7 @@ import {
   Puzzle,
   Plus,
   FolderGit2,
+  Minus,
   Type,
   Code2,
 } from "lucide-react-native";
@@ -38,6 +39,9 @@ import { ScreenTitle } from "@/components/headers/screen-title";
 import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import {
+  MAX_CHAT_LINE_HEIGHT_MULTIPLIER,
+  MIN_CHAT_LINE_HEIGHT_MULTIPLIER,
+  normalizeChatLineHeightMultiplier,
   useAppSettings,
   useSettings,
   parseTerminalScrollbackLines,
@@ -253,6 +257,9 @@ interface GeneralSectionProps {
   handleUiFontChange: (font: AppSettings["uiFont"]) => void;
   handleBodyFontChange: (font: AppSettings["bodyFont"]) => void;
   handleMonoFontChange: (font: AppSettings["monoFont"]) => void;
+  handleChatLineHeightMultiplierChange: (
+    multiplier: AppSettings["chatLineHeightMultiplier"],
+  ) => void;
   handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
@@ -409,6 +416,116 @@ function FontFamilyInput({
   );
 }
 
+interface LineHeightMultiplierInputProps {
+  value: number;
+  iconSize: number;
+  iconColor: string;
+  onChange: (multiplier: number) => void;
+}
+
+function formatLineHeightMultiplier(multiplier: number): string {
+  return multiplier.toFixed(1);
+}
+
+function parseMultiplierDraft(draft: string): number {
+  return normalizeChatLineHeightMultiplier(draft.trim().replace(/x$/i, ""));
+}
+
+function LineHeightMultiplierInput({
+  value,
+  iconSize,
+  iconColor,
+  onChange,
+}: LineHeightMultiplierInputProps) {
+  const { theme } = useUnistyles();
+  const [draft, setDraft] = useState(formatLineHeightMultiplier(value));
+  const canDecrease = value > MIN_CHAT_LINE_HEIGHT_MULTIPLIER;
+  const canIncrease = value < MAX_CHAT_LINE_HEIGHT_MULTIPLIER;
+
+  useEffect(() => {
+    setDraft(formatLineHeightMultiplier(value));
+  }, [value]);
+
+  const commitValue = useCallback(
+    (next: number) => {
+      setDraft(formatLineHeightMultiplier(next));
+      if (next !== value) {
+        onChange(next);
+      }
+    },
+    [onChange, value],
+  );
+
+  const commitDraft = useCallback(() => {
+    commitValue(parseMultiplierDraft(draft));
+  }, [commitValue, draft]);
+
+  const handleDecrease = useCallback(() => {
+    commitValue(normalizeChatLineHeightMultiplier(value - 0.1));
+  }, [commitValue, value]);
+
+  const handleIncrease = useCallback(() => {
+    commitValue(normalizeChatLineHeightMultiplier(value + 0.1));
+  }, [commitValue, value]);
+  const decreaseButtonStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.multiplierButton,
+      pressed && styles.multiplierButtonPressed,
+      !canDecrease && styles.multiplierButtonDisabled,
+    ],
+    [canDecrease],
+  );
+  const increaseButtonStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.multiplierButton,
+      pressed && styles.multiplierButtonPressed,
+      !canIncrease && styles.multiplierButtonDisabled,
+    ],
+    [canIncrease],
+  );
+
+  return (
+    <View style={styles.multiplierControl}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Decrease chat line spacing"
+        disabled={!canDecrease}
+        onPress={handleDecrease}
+        style={decreaseButtonStyle}
+      >
+        <Minus size={iconSize} color={iconColor} />
+      </Pressable>
+      <View style={styles.multiplierInputShell}>
+        <TextInput
+          accessibilityLabel="Chat line spacing multiplier"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="decimal-pad"
+          onBlur={commitDraft}
+          onChangeText={setDraft}
+          onSubmitEditing={commitDraft}
+          placeholder="1.0"
+          placeholderTextColor={theme.colors.foregroundMuted}
+          returnKeyType="done"
+          selectionColor={theme.colors.accent}
+          style={styles.multiplierInput}
+          value={draft}
+        />
+        <Text style={styles.multiplierSuffix}>x</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Increase chat line spacing"
+        disabled={!canIncrease}
+        onPress={handleIncrease}
+        style={increaseButtonStyle}
+      >
+        <Plus size={iconSize} color={iconColor} />
+      </Pressable>
+    </View>
+  );
+}
+
 function GeneralSection({
   settings,
   isDesktopApp,
@@ -418,6 +535,7 @@ function GeneralSection({
   handleUiFontChange,
   handleBodyFontChange,
   handleMonoFontChange,
+  handleChatLineHeightMultiplierChange,
   handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleTerminalScrollbackLinesChange,
@@ -528,6 +646,18 @@ function GeneralSection({
             iconColor={iconColor}
             accessibilityLabel="Mono font family"
             onChange={handleMonoFontChange}
+          />
+        </View>
+        <View style={ROW_WITH_BORDER_STYLE}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Line spacing</Text>
+            <Text style={settingsStyles.rowHint}>Adjust chat message text line height</Text>
+          </View>
+          <LineHeightMultiplierInput
+            value={settings.chatLineHeightMultiplier}
+            iconSize={iconSize}
+            iconColor={iconColor}
+            onChange={handleChatLineHeightMultiplierChange}
           />
         </View>
         <View style={ROW_WITH_BORDER_STYLE}>
@@ -1101,6 +1231,13 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
     [updateSettings],
   );
 
+  const handleChatLineHeightMultiplierChange = useCallback(
+    (chatLineHeightMultiplier: AppSettings["chatLineHeightMultiplier"]) => {
+      void updateSettings({ chatLineHeightMultiplier });
+    },
+    [updateSettings],
+  );
+
   const handleSendBehaviorChange = useCallback(
     (behavior: SendBehavior) => {
       void updateSettings({ sendBehavior: behavior });
@@ -1306,6 +1443,7 @@ export default function SettingsScreen({ view }: SettingsScreenProps) {
               handleUiFontChange={handleUiFontChange}
               handleBodyFontChange={handleBodyFontChange}
               handleMonoFontChange={handleMonoFontChange}
+              handleChatLineHeightMultiplierChange={handleChatLineHeightMultiplierChange}
               handleSendBehaviorChange={handleSendBehaviorChange}
               handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
               handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
@@ -1553,6 +1691,52 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     paddingVertical: 0,
     paddingHorizontal: 0,
+  },
+  multiplierControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  multiplierButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+  },
+  multiplierButtonPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  multiplierButtonDisabled: {
+    opacity: 0.4,
+  },
+  multiplierInputShell: {
+    width: 76,
+    height: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+    paddingHorizontal: theme.spacing[2],
+  },
+  multiplierInput: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    textAlign: "right",
+  },
+  multiplierSuffix: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
 }));
 

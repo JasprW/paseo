@@ -69,4 +69,13 @@ describe("createMarkdownStyles", () => {
       userSelect: "text",
     });
   });
+
+  it("applies chat line height multiplier to assistant markdown text", () => {
+    const styles = createMarkdownStyles(darkTheme, { lineHeightMultiplier: 1.2 });
+
+    expect(styles.body.lineHeight).toBe(26.4);
+    expect(styles.heading1.lineHeight).toBe(38.4);
+    expect(styles.bullet_list_icon.lineHeight).toBe(26.4);
+    expect(styles.ordered_list_icon.lineHeight).toBe(26.4);
+  });
 });

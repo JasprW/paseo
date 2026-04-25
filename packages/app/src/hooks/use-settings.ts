@@ -30,6 +30,9 @@ import {
 export const APP_SETTINGS_KEY = "@paseo:app-settings";
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 const APP_SETTINGS_QUERY_KEY = ["app-settings"] as const;
+export const DEFAULT_CHAT_LINE_HEIGHT_MULTIPLIER = 1;
+export const MIN_CHAT_LINE_HEIGHT_MULTIPLIER = 0.8;
+export const MAX_CHAT_LINE_HEIGHT_MULTIPLIER = 1.6;
 
 export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
@@ -53,6 +56,7 @@ export interface AppSettings {
   uiFont: string;
   bodyFont: string;
   monoFont: string;
+  chatLineHeightMultiplier: number;
   sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
   terminalScrollbackLines: number;
@@ -70,6 +74,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   uiFont: DEFAULT_UI_FONT_FAMILY,
   bodyFont: DEFAULT_BODY_FONT_FAMILY,
   monoFont: DEFAULT_MONO_FONT_FAMILY,
+  chatLineHeightMultiplier: DEFAULT_CHAT_LINE_HEIGHT_MULTIPLIER,
   sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -162,6 +167,9 @@ export function useSettings(): UseSettingsReturn {
       }
       if (updates.monoFont !== undefined) {
         appUpdates.monoFont = updates.monoFont;
+      }
+      if (updates.chatLineHeightMultiplier !== undefined) {
+        appUpdates.chatLineHeightMultiplier = updates.chatLineHeightMultiplier;
       }
       if (updates.sendBehavior !== undefined) {
         appUpdates.sendBehavior = updates.sendBehavior;
@@ -305,6 +313,7 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     uiFont: normalizeUiFontFamily(settings.uiFont),
     bodyFont: normalizeBodyFontFamily(settings.bodyFont),
     monoFont: normalizeMonoFontFamily(settings.monoFont),
+    chatLineHeightMultiplier: normalizeChatLineHeightMultiplier(settings.chatLineHeightMultiplier),
     terminalScrollbackLines:
       parseTerminalScrollbackLines(settings.terminalScrollbackLines) ??
       DEFAULT_TERMINAL_SCROLLBACK_LINES,
@@ -328,7 +337,22 @@ function pickAppSettingsFromStored(stored: Record<string, unknown>): Partial<App
   result.uiFont = normalizeUiFontFamily(stored.uiFont);
   result.bodyFont = normalizeBodyFontFamily(stored.bodyFont);
   result.monoFont = normalizeMonoFontFamily(stored.monoFont);
+  result.chatLineHeightMultiplier = normalizeChatLineHeightMultiplier(
+    stored.chatLineHeightMultiplier,
+  );
   return result;
+}
+
+export function normalizeChatLineHeightMultiplier(value: unknown): number {
+  const parsed = typeof value === "string" ? Number.parseFloat(value) : value;
+  if (typeof parsed !== "number" || !Number.isFinite(parsed)) {
+    return DEFAULT_CHAT_LINE_HEIGHT_MULTIPLIER;
+  }
+  const clamped = Math.min(
+    MAX_CHAT_LINE_HEIGHT_MULTIPLIER,
+    Math.max(MIN_CHAT_LINE_HEIGHT_MULTIPLIER, parsed),
+  );
+  return Math.round(clamped * 10) / 10;
 }
 
 function pickThemeSettingsFromStored(stored: Record<string, unknown>): Partial<AppSettings> {

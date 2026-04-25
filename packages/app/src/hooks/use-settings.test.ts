@@ -101,6 +101,16 @@ describe("use-settings", () => {
     expect(result.releaseChannel).toBe("stable");
   });
 
+  it("defaults chat line height multiplier to 1.0x when storage is empty", async () => {
+    asyncStorageMock.getItem.mockResolvedValue(null);
+    asyncStorageMock.setItem.mockResolvedValue();
+
+    const mod = await import("./use-settings");
+    const result = await mod.loadSettingsFromStorage();
+
+    expect(result.chatLineHeightMultiplier).toBe(1);
+  });
+
   it("ignores renderer-owned daemon management state outside Electron", async () => {
     asyncStorageMock.getItem.mockImplementation(async (key: string) => {
       if (key === "@paseo:app-settings") {
@@ -124,6 +134,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       manageBuiltInDaemon: true,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
@@ -174,6 +185,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
       terminalScrollbackLines: 10_000,
@@ -219,6 +231,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
       terminalScrollbackLines: 10_000,
@@ -244,6 +257,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
@@ -380,6 +394,41 @@ describe("use-settings", () => {
     expect(result.monoFont).toBe(mod.DEFAULT_APP_SETTINGS.monoFont);
   });
 
+  it("loads persisted chat line height multiplier", async () => {
+    asyncStorageMock.getItem.mockImplementation(async (key: string) => {
+      if (key === "@paseo:app-settings") {
+        return JSON.stringify({
+          chatLineHeightMultiplier: 1.3,
+        });
+      }
+      return null;
+    });
+
+    const mod = await import("./use-settings");
+    const result = await mod.loadSettingsFromStorage();
+
+    expect(result.chatLineHeightMultiplier).toBe(1.3);
+  });
+
+  it("clamps and rounds persisted chat line height multiplier", async () => {
+    asyncStorageMock.getItem.mockImplementation(async (key: string) => {
+      if (key === "@paseo:app-settings") {
+        return JSON.stringify({
+          chatLineHeightMultiplier: 1.26,
+        });
+      }
+      return null;
+    });
+
+    const mod = await import("./use-settings");
+    const result = await mod.loadSettingsFromStorage();
+
+    expect(result.chatLineHeightMultiplier).toBe(1.3);
+    expect(mod.normalizeChatLineHeightMultiplier(0.1)).toBe(0.8);
+    expect(mod.normalizeChatLineHeightMultiplier(9)).toBe(1.6);
+    expect(mod.normalizeChatLineHeightMultiplier("bad")).toBe(1);
+  });
+
   it("migrates a persisted system theme preference from the previous app settings shape", async () => {
     asyncStorageMock.getItem.mockImplementation(async (key: string) => {
       if (key === "@paseo:app-settings") {
@@ -401,6 +450,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
@@ -428,6 +478,7 @@ describe("use-settings", () => {
       uiFont: mod.DEFAULT_APP_SETTINGS.uiFont,
       bodyFont: mod.DEFAULT_APP_SETTINGS.bodyFont,
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
+      chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
       terminalScrollbackLines: 10_000,
