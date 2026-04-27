@@ -26,6 +26,9 @@ function createWorkspace(
     archivingAt: input.archivingAt ?? null,
     diffStat: input.diffStat ?? null,
     scripts: input.scripts ?? [],
+    gitRuntime: input.gitRuntime ?? null,
+    githubRuntime: input.githubRuntime ?? null,
+    project: input.project,
   };
 }
 
@@ -155,6 +158,8 @@ describe("normalizeWorkspaceDescriptor", () => {
       activityAt: null,
       diffStat: null,
       scripts: [],
+      gitRuntime: null,
+      githubRuntime: null,
       project: {
         projectKey: "remote:github.com/acme/app",
         projectName: "acme/app",
@@ -182,6 +187,35 @@ describe("normalizeWorkspaceDescriptor", () => {
         isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       },
+    });
+  });
+
+  it("preserves workspace git runtime metadata", () => {
+    const workspace = normalizeWorkspaceDescriptor({
+      id: "1",
+      projectId: "1",
+      projectDisplayName: "Project 1",
+      projectRootPath: "/repo",
+      workspaceDirectory: "/repo",
+      projectKind: "git",
+      workspaceKind: "checkout",
+      name: "main",
+      status: "running",
+      activityAt: null,
+      diffStat: null,
+      scripts: [],
+      gitRuntime: {
+        currentBranch: "main",
+        remoteUrl: "https://example.com/repo.git",
+        isPaseoOwnedWorktree: false,
+      },
+      githubRuntime: null,
+    });
+
+    expect(workspace.gitRuntime).toEqual({
+      currentBranch: "main",
+      remoteUrl: "https://example.com/repo.git",
+      isPaseoOwnedWorktree: false,
     });
   });
 });

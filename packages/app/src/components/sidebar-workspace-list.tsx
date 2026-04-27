@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   StatusBar,
   ScrollView,
+  StyleSheet as RNStyleSheet,
+  type LayoutChangeEvent,
   type GestureResponderEvent,
   type PressableStateCallbackType,
   type ViewStyle,
@@ -27,6 +29,12 @@ import {
   type Ref,
 } from "react";
 import { router, usePathname, type Href } from "expo-router";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { navigateToWorkspace } from "@/hooks/use-workspace-navigation";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -168,6 +176,13 @@ const syncedLoaderColorMapping = (theme: Theme) => ({
       ? theme.colors.palette.amber[700]
       : theme.colors.palette.amber[500],
 });
+const PROJECT_WORKSPACE_LIST_ROW_HEIGHT_ESTIMATE = 40;
+const PROJECT_WORKSPACE_LIST_COLLAPSE_OFFSET = -4;
+const PROJECT_WORKSPACE_LIST_COLLAPSE_DURATION = 180;
+const PROJECT_WORKSPACE_LIST_COLLAPSE_ANIMATION = {
+  duration: PROJECT_WORKSPACE_LIST_COLLAPSE_DURATION,
+  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+};
 
 function getPrIconUniMapping(state: PrHint["state"]) {
   switch (state) {
@@ -2057,6 +2072,125 @@ function WorkspaceRow({
   );
 }
 
+function getEstimatedWorkspaceListHeight(workspaceCount: number): number {
+  return Math.max(0, workspaceCount * PROJECT_WORKSPACE_LIST_ROW_HEIGHT_ESTIMATE);
+}
+
+function CollapsibleProjectWorkspaceList({
+  projectKey,
+  collapsed,
+  workspaces,
+  renderWorkspace,
+  onWorkspaceDragEnd,
+  useNestable,
+  parentGestureRef,
+}: {
+  projectKey: string;
+  collapsed: boolean;
+  workspaces: SidebarWorkspaceEntry[];
+  renderWorkspace: (info: DraggableRenderItemInfo<SidebarWorkspaceEntry>) => ReactElement;
+  onWorkspaceDragEnd: (workspaces: SidebarWorkspaceEntry[]) => void;
+  useNestable: boolean;
+  parentGestureRef?: MutableRefObject<GestureType | undefined>;
+}) {
+  const estimatedHeight = useMemo(
+    () => getEstimatedWorkspaceListHeight(workspaces.length),
+    [workspaces.length],
+  );
+  const [shouldRender, setShouldRender] = useState(!collapsed);
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  const measuredHeightRef = useRef(0);
+  const animatedHeight = useSharedValue(collapsed ? 0 : estimatedHeight);
+  const animatedOpacity = useSharedValue(collapsed ? 0 : 1);
+  const animatedOffset = useSharedValue(collapsed ? PROJECT_WORKSPACE_LIST_COLLAPSE_OFFSET : 0);
+  const targetHeight = measuredHeight > 0 ? measuredHeight : estimatedHeight;
+
+  useEffect(() => {
+    let hideContentTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (!collapsed) {
+      setShouldRender(true);
+    } else {
+      hideContentTimeout = setTimeout(() => {
+        setShouldRender(false);
+      }, PROJECT_WORKSPACE_LIST_COLLAPSE_DURATION);
+    }
+
+    animatedHeight.value = withTiming(
+      collapsed ? 0 : targetHeight,
+      PROJECT_WORKSPACE_LIST_COLLAPSE_ANIMATION,
+    );
+    animatedOpacity.value = withTiming(
+      collapsed ? 0 : 1,
+      PROJECT_WORKSPACE_LIST_COLLAPSE_ANIMATION,
+    );
+    animatedOffset.value = withTiming(
+      collapsed ? PROJECT_WORKSPACE_LIST_COLLAPSE_OFFSET : 0,
+      PROJECT_WORKSPACE_LIST_COLLAPSE_ANIMATION,
+    );
+
+    return () => {
+      if (hideContentTimeout) {
+        clearTimeout(hideContentTimeout);
+      }
+    };
+  }, [animatedHeight, animatedOffset, animatedOpacity, collapsed, targetHeight]);
+
+  const handleContentLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (nextHeight <= 0 || Math.abs(nextHeight - measuredHeightRef.current) < 1) {
+      return;
+    }
+    measuredHeightRef.current = nextHeight;
+    setMeasuredHeight(nextHeight);
+  }, []);
+
+  const containerAnimatedStyle = useAnimatedStyle(() => ({
+    height: animatedHeight.value,
+    opacity: animatedOpacity.value,
+  }));
+
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: animatedOffset.value }],
+  }));
+
+  const containerStyle = useMemo(
+    () => [staticStyles.collapsibleWorkspaceList, containerAnimatedStyle],
+    [containerAnimatedStyle],
+  );
+  const contentStyle = useMemo(
+    () => [staticStyles.collapsibleWorkspaceListContent, contentAnimatedStyle],
+    [contentAnimatedStyle],
+  );
+
+  if (!shouldRender && collapsed) {
+    return null;
+  }
+
+  return (
+    <Animated.View
+      pointerEvents={collapsed ? "none" : "auto"}
+      style={containerStyle}
+      testID={`sidebar-workspace-list-collapsible-${projectKey}`}
+    >
+      <Animated.View onLayout={handleContentLayout} style={contentStyle}>
+        <DraggableList
+          testID={`sidebar-workspace-list-${projectKey}`}
+          data={workspaces}
+          keyExtractor={workspaceKeyExtractor}
+          renderItem={renderWorkspace}
+          onDragEnd={onWorkspaceDragEnd}
+          scrollEnabled={false}
+          useDragHandle
+          nestable={useNestable}
+          simultaneousGestureRef={parentGestureRef}
+          containerStyle={styles.workspaceListContainer}
+        />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
 function ProjectBlock({
   project,
   collapsed,
@@ -2280,20 +2414,15 @@ function ProjectBlock({
             dragHandleProps={dragHandleProps}
           />
 
-          {!collapsed ? (
-            <DraggableList
-              testID={`sidebar-workspace-list-${project.projectKey}`}
-              data={project.workspaces}
-              keyExtractor={workspaceKeyExtractor}
-              renderItem={renderWorkspace}
-              onDragEnd={handleWorkspaceDragEnd}
-              scrollEnabled={false}
-              useDragHandle
-              nestable={useNestable}
-              simultaneousGestureRef={parentGestureRef}
-              containerStyle={styles.workspaceListContainer}
-            />
-          ) : null}
+          <CollapsibleProjectWorkspaceList
+            projectKey={project.projectKey}
+            collapsed={collapsed}
+            workspaces={project.workspaces}
+            renderWorkspace={renderWorkspace}
+            onWorkspaceDragEnd={handleWorkspaceDragEnd}
+            useNestable={useNestable}
+            parentGestureRef={parentGestureRef}
+          />
         </>
       )}
     </View>
@@ -2621,6 +2750,16 @@ export function SidebarWorkspaceList({
     </View>
   );
 }
+
+const staticStyles = RNStyleSheet.create({
+  collapsibleWorkspaceList: {
+    width: "100%",
+    overflow: "hidden",
+  },
+  collapsibleWorkspaceListContent: {
+    width: "100%",
+  },
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

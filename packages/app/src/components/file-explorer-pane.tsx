@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, type ReactElement, type RefObj
 import { useQuery } from "@tanstack/react-query";
 import {
   ActivityIndicator,
-  FlatList,
-  ListRenderItemInfo,
   Pressable,
   Text,
   View,
+  type FlatList,
+  type ListRenderItemInfo,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import Animated, { Easing, LinearTransition } from "react-native-reanimated";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
 import { Fonts } from "@/constants/theme";
@@ -53,6 +54,9 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 ];
 
 const INDENT_PER_LEVEL = 16;
+const FILE_TREE_ROW_LAYOUT_ANIMATION = LinearTransition.duration(160).easing(
+  Easing.bezier(0.25, 0.1, 0.25, 1),
+);
 
 function formatFileSize({ size }: { size: number }): string {
   if (size < 1024) {
@@ -582,7 +586,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
           </View>
         </Pressable>
       </View>
-      <FlatList
+      <Animated.FlatList
         ref={treeListRef}
         style={styles.treeList}
         data={treeRows}
@@ -598,6 +602,7 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
         initialNumToRender={24}
         maxToRenderPerBatch={40}
         windowSize={12}
+        itemLayoutAnimation={FILE_TREE_ROW_LAYOUT_ANIMATION}
       />
       {scrollbar.overlay}
     </View>

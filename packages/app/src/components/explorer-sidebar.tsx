@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useIsFocused } from "@react-navigation/native";
-import Animated, { useAnimatedStyle, useSharedValue, runOnJS } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  runOnJS,
+  withTiming,
+} from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X } from "lucide-react-native";
@@ -30,8 +36,17 @@ import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { isWeb } from "@/constants/platform";
+import {
+  beginWebResizeSelectionLock,
+  endWebResizeSelectionLock,
+} from "@/utils/web-resize-selection-lock";
 
 const MIN_CHAT_WIDTH = 400;
+const DESKTOP_SIDEBAR_TOGGLE_DURATION = 220;
+const DESKTOP_SIDEBAR_TOGGLE_ANIMATION = {
+  duration: DESKTOP_SIDEBAR_TOGGLE_DURATION,
+  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+};
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
 interface ExplorerSidebarProps {
@@ -95,7 +110,34 @@ export function ExplorerSidebar({
 
   // For resize drag, track the starting width
   const startWidthRef = useRef(explorerWidth);
-  const resizeWidth = useSharedValue(explorerWidth);
+  const resizeWidth = useSharedValue(!isMobile && !isOpen ? 0 : explorerWidth);
+  const [shouldRenderDesktopContent, setShouldRenderDesktopContent] = useState(isOpen);
+
+  useEffect(() => {
+    if (isMobile) {
+      resizeWidth.value = explorerWidth;
+      setShouldRenderDesktopContent(isOpen);
+      return;
+    }
+
+    let hideContentTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (isOpen) {
+      setShouldRenderDesktopContent(true);
+    } else {
+      hideContentTimeout = setTimeout(() => {
+        setShouldRenderDesktopContent(false);
+      }, DESKTOP_SIDEBAR_TOGGLE_DURATION);
+    }
+
+    resizeWidth.value = withTiming(isOpen ? explorerWidth : 0, DESKTOP_SIDEBAR_TOGGLE_ANIMATION);
+
+    return () => {
+      if (hideContentTimeout) {
+        clearTimeout(hideContentTimeout);
+      }
+    };
+  }, [explorerWidth, isMobile, isOpen, resizeWidth]);
 
   const handleClose = useCallback(
     (reason: string) => {
@@ -221,8 +263,11 @@ export function ExplorerSidebar({
   const resizeGesture = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!isMobile)
+        .enabled(!isMobile && isOpen)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onBegin(() => {
+          runOnJS(beginWebResizeSelectionLock)("col-resize");
+        })
         .onStart(() => {
           startWidthRef.current = explorerWidth;
           resizeWidth.value = explorerWidth;
@@ -239,8 +284,11 @@ export function ExplorerSidebar({
         })
         .onEnd(() => {
           runOnJS(setExplorerWidth)(resizeWidth.value);
+        })
+        .onFinalize(() => {
+          runOnJS(endWebResizeSelectionLock)();
         }),
-    [isMobile, explorerWidth, resizeWidth, setExplorerWidth, viewportWidth],
+    [isMobile, isOpen, explorerWidth, resizeWidth, setExplorerWidth, viewportWidth],
   );
 
   const sidebarAnimatedStyle = useAnimatedStyle(() => ({
@@ -254,6 +302,7 @@ export function ExplorerSidebar({
 
   const resizeAnimatedStyle = useAnimatedStyle(() => ({
     width: resizeWidth.value,
+    opacity: Math.min(1, resizeWidth.value / 48),
   }));
 
   const backdropCombinedStyle = useMemo(
@@ -323,31 +372,30 @@ export function ExplorerSidebar({
     );
   }
 
-  // Desktop: fixed width sidebar with resize handle
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <Animated.View style={desktopSidebarStyle}>
+    <Animated.View style={desktopSidebarStyle} pointerEvents={isOpen ? "auto" : "none"}>
       <View style={DESKTOP_SIDEBAR_BORDER_STYLE}>
-        {/* Resize handle - absolutely positioned over left border */}
-        <GestureDetector gesture={resizeGesture}>
-          <View style={RESIZE_HANDLE_STYLE} />
-        </GestureDetector>
+        {shouldRenderDesktopContent ? (
+          <>
+            {/* Resize handle - absolutely positioned over left border */}
+            <GestureDetector gesture={resizeGesture}>
+              <View style={RESIZE_HANDLE_STYLE} />
+            </GestureDetector>
 
-        <SidebarContent
-          activeTab={explorerTab}
-          onTabPress={handleTabPress}
-          onClose={handleDesktopClose}
-          serverId={serverId}
-          workspaceId={workspaceId}
-          workspaceRoot={workspaceRoot}
-          isGit={isGit}
-          isMobile={false}
-          isOpen={isOpen}
-          onOpenFile={onOpenFile}
-        />
+            <SidebarContent
+              activeTab={explorerTab}
+              onTabPress={handleTabPress}
+              onClose={handleDesktopClose}
+              serverId={serverId}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              isGit={isGit}
+              isMobile={false}
+              isOpen={isOpen}
+              onOpenFile={onOpenFile}
+            />
+          </>
+        ) : null}
       </View>
     </Animated.View>
   );
@@ -517,6 +565,7 @@ const explorerStaticStyles = RNStyleSheet.create({
   },
   desktopSidebar: {
     position: "relative" as const,
+    overflow: "hidden" as const,
   },
 });
 

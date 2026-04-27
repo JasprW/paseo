@@ -25,6 +25,11 @@ function createWorkspaceDescriptor(input: Partial<WorkspaceDescriptor> = {}): Wo
     status: "running",
     diffStat: null,
     scripts: [],
+    gitRuntime: {
+      currentBranch: "feat/workspace-sot",
+      remoteUrl: "https://github.com/getpaseo/paseo.git",
+      isPaseoOwnedWorktree: false,
+    },
     ...input,
     archivingAt: input.archivingAt ?? null,
   };
@@ -55,10 +60,26 @@ describe("workspace source of truth consumption", () => {
     ).toEqual({ kind: "skeleton" });
   });
 
-  it("keeps git workspace headers skeletoned until checkout status resolves", () => {
+  it("renders git runtime headers while checkout status is pending", () => {
     expect(
       resolveWorkspaceHeaderRenderState({
         workspace: createWorkspaceDescriptor({ projectKind: "git" }),
+        checkoutState: { kind: "pending" },
+      }),
+    ).toEqual({
+      kind: "ready",
+      title: "feat/workspace-sot",
+      subtitle: "getpaseo/paseo",
+      shouldShowSubtitle: true,
+      isGitCheckout: true,
+      currentBranchName: "feat/workspace-sot",
+    });
+  });
+
+  it("keeps legacy git workspace headers skeletoned until checkout status resolves", () => {
+    expect(
+      resolveWorkspaceHeaderRenderState({
+        workspace: createWorkspaceDescriptor({ projectKind: "git", gitRuntime: null }),
         checkoutState: { kind: "pending" },
       }),
     ).toEqual({ kind: "skeleton" });
@@ -139,8 +160,8 @@ describe("workspace source of truth consumption", () => {
       title: "feat/workspace-sot",
       subtitle: "getpaseo/paseo",
       shouldShowSubtitle: true,
-      isGitCheckout: false,
-      currentBranchName: null,
+      isGitCheckout: true,
+      currentBranchName: "feat/workspace-sot",
     });
   });
 

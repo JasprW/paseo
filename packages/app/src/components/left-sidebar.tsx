@@ -24,11 +24,13 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   Extrapolation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -58,6 +60,10 @@ import { resolveActiveHost } from "@/utils/active-host";
 import { formatConnectionStatus } from "@/utils/daemons";
 import { useWindowControlsPadding } from "@/utils/desktop-window";
 import {
+  beginWebResizeSelectionLock,
+  endWebResizeSelectionLock,
+} from "@/utils/web-resize-selection-lock";
+import {
   buildHostSessionsRoute,
   buildSettingsRoute,
   mapPathnameToServer,
@@ -67,6 +73,11 @@ import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
 
 const MIN_CHAT_WIDTH = 400;
+const DESKTOP_SIDEBAR_TOGGLE_DURATION = 220;
+const DESKTOP_SIDEBAR_TOGGLE_ANIMATION = {
+  duration: DESKTOP_SIDEBAR_TOGGLE_DURATION,
+  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+};
 
 type SidebarShortcutModel = ReturnType<typeof useSidebarShortcutModel>;
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
@@ -775,16 +786,37 @@ function DesktopSidebar({
   );
 
   const startWidthRef = useRef(sidebarWidth);
-  const resizeWidth = useSharedValue(sidebarWidth);
+  const resizeWidth = useSharedValue(isOpen ? sidebarWidth : 0);
+  const [shouldRenderContent, setShouldRenderContent] = useState(isOpen);
 
   useEffect(() => {
-    resizeWidth.value = sidebarWidth;
-  }, [sidebarWidth, resizeWidth]);
+    let hideContentTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (isOpen) {
+      setShouldRenderContent(true);
+    } else {
+      hideContentTimeout = setTimeout(() => {
+        setShouldRenderContent(false);
+      }, DESKTOP_SIDEBAR_TOGGLE_DURATION);
+    }
+
+    resizeWidth.value = withTiming(isOpen ? sidebarWidth : 0, DESKTOP_SIDEBAR_TOGGLE_ANIMATION);
+
+    return () => {
+      if (hideContentTimeout) {
+        clearTimeout(hideContentTimeout);
+      }
+    };
+  }, [isOpen, sidebarWidth, resizeWidth]);
 
   const resizeGesture = useMemo(
     () =>
       Gesture.Pan()
+        .enabled(isOpen)
         .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
+        .onBegin(() => {
+          runOnJS(beginWebResizeSelectionLock)("col-resize");
+        })
         .onStart(() => {
           startWidthRef.current = sidebarWidth;
           resizeWidth.value = sidebarWidth;
@@ -801,12 +833,16 @@ function DesktopSidebar({
         })
         .onEnd(() => {
           runOnJS(setSidebarWidth)(resizeWidth.value);
+        })
+        .onFinalize(() => {
+          runOnJS(endWebResizeSelectionLock)();
         }),
-    [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
+    [isOpen, sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
   );
 
   const resizeAnimatedStyle = useAnimatedStyle(() => ({
     width: resizeWidth.value,
+    opacity: Math.min(1, resizeWidth.value / 48),
   }));
 
   const paddingTopSpacerStyle = useMemo(() => ({ height: padding.top }), [padding.top]);
@@ -823,61 +859,61 @@ function DesktopSidebar({
     [],
   );
 
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <Animated.View style={desktopSidebarStyle}>
+    <Animated.View style={desktopSidebarStyle} pointerEvents={isOpen ? "auto" : "none"}>
       <View style={desktopSidebarBorderStyle}>
-        <View style={styles.sidebarDragArea}>
-          <TitlebarDragRegion />
-          {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
-          <SidebarHeaderRow
-            icon={MessagesSquare}
-            label="Sessions"
-            onPress={handleViewMore}
-            isActive={isSessionsActive}
-            testID="sidebar-sessions"
-          />
-        </View>
+        {shouldRenderContent ? (
+          <>
+            <View style={styles.sidebarDragArea}>
+              <TitlebarDragRegion />
+              {padding.top > 0 ? <View style={paddingTopSpacerStyle} /> : null}
+              <SidebarHeaderRow
+                icon={MessagesSquare}
+                label="Sessions"
+                onPress={handleViewMore}
+                isActive={isSessionsActive}
+                testID="sidebar-sessions"
+              />
+            </View>
 
-        {isInitialLoad ? (
-          <SidebarAgentListSkeleton />
-        ) : (
-          <SidebarWorkspaceList
-            serverId={activeServerId}
-            collapsedProjectKeys={collapsedProjectKeys}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
-            shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-            projects={projects}
-            isRefreshing={isManualRefresh && isRevalidating}
-            onRefresh={handleRefresh}
-            onAddProject={handleOpenProject}
-          />
-        )}
+            {isInitialLoad ? (
+              <SidebarAgentListSkeleton />
+            ) : (
+              <SidebarWorkspaceList
+                serverId={activeServerId}
+                collapsedProjectKeys={collapsedProjectKeys}
+                onToggleProjectCollapsed={toggleProjectCollapsed}
+                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                projects={projects}
+                isRefreshing={isManualRefresh && isRevalidating}
+                onRefresh={handleRefresh}
+                onAddProject={handleOpenProject}
+              />
+            )}
 
-        <SidebarCalloutSlot />
+            <SidebarCalloutSlot />
 
-        <SidebarFooter
-          theme={theme}
-          activeServerId={activeServerId}
-          activeHostLabel={activeHostLabel}
-          hostStatusDotStyle={hostStatusDotStyle}
-          hostOptions={hostOptions}
-          hostTriggerRef={hostTriggerRef}
-          isHostPickerOpen={isHostPickerOpen}
-          setIsHostPickerOpen={setIsHostPickerOpen}
-          handleHostSelect={handleHostSelect}
-          renderHostOption={renderHostOption}
-          handleOpenProject={handleOpenProject}
-          handleSettings={handleSettings}
-        />
+            <SidebarFooter
+              theme={theme}
+              activeServerId={activeServerId}
+              activeHostLabel={activeHostLabel}
+              hostStatusDotStyle={hostStatusDotStyle}
+              hostOptions={hostOptions}
+              hostTriggerRef={hostTriggerRef}
+              isHostPickerOpen={isHostPickerOpen}
+              setIsHostPickerOpen={setIsHostPickerOpen}
+              handleHostSelect={handleHostSelect}
+              renderHostOption={renderHostOption}
+              handleOpenProject={handleOpenProject}
+              handleSettings={handleSettings}
+            />
 
-        {/* Resize handle - absolutely positioned over right border */}
-        <GestureDetector gesture={resizeGesture}>
-          <View style={resizeHandleStyle} />
-        </GestureDetector>
+            {/* Resize handle - absolutely positioned over right border */}
+            <GestureDetector gesture={resizeGesture}>
+              <View style={resizeHandleStyle} />
+            </GestureDetector>
+          </>
+        ) : null}
       </View>
     </Animated.View>
   );
@@ -900,6 +936,7 @@ const staticStyles = RNStyleSheet.create({
   },
   desktopSidebar: {
     position: "relative" as const,
+    overflow: "hidden" as const,
   },
 });
 
