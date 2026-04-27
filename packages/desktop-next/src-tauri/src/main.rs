@@ -29,6 +29,7 @@ use url::Url;
 const BRIDGE_SCRIPT: &str = include_str!("bridge.js");
 const DAEMON_LOG_FILENAME: &str = "daemon.log";
 const ATTACHMENTS_DIRNAME: &str = "desktop-attachments";
+const DESKTOP_SETTINGS_FILENAME: &str = "desktop-settings.json";
 const MACOS_TRAFFIC_LIGHT_X: f64 = 16.0;
 const MACOS_TRAFFIC_LIGHT_TOP: f64 = 14.0;
 const MACOS_TRAFFIC_LIGHT_WRY_Y_COMPENSATION: f64 = 6.0;
@@ -80,6 +81,33 @@ struct PidLockInfo {
     listen: Option<String>,
     sock_path: Option<String>,
     desktop_managed: Option<bool>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSettings {
+    release_channel: String,
+    daemon: DesktopDaemonSettings,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopDaemonSettings {
+    manage_built_in_daemon: bool,
+    keep_running_after_quit: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PersistedDesktopSettingsDocument {
+    version: u8,
+    settings: DesktopSettings,
+    migrations: DesktopSettingsMigrations,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopSettingsMigrations {
+    legacy_renderer_settings_imported: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -258,6 +286,10 @@ impl AppState {
     fn server_id_path(&self) -> PathBuf {
         self.paseo_home.join(SERVER_ID_FILENAME)
     }
+
+    fn desktop_settings_path(&self) -> PathBuf {
+        self.paseo_home.join(DESKTOP_SETTINGS_FILENAME)
+    }
 }
 
 fn default_repo_root() -> PathBuf {
@@ -372,6 +404,164 @@ fn value_to_trimmed_string(value: Option<&Value>) -> Option<String> {
 
 fn string_to_cstring(value: &str) -> Option<CString> {
     CString::new(value.replace('\0', "")).ok()
+}
+
+fn default_desktop_settings() -> DesktopSettings {
+    DesktopSettings {
+        release_channel: "stable".to_string(),
+        daemon: DesktopDaemonSettings {
+            manage_built_in_daemon: true,
+            keep_running_after_quit: true,
+        },
+    }
+}
+
+fn default_desktop_settings_document() -> PersistedDesktopSettingsDocument {
+    PersistedDesktopSettingsDocument {
+        version: 1,
+        settings: default_desktop_settings(),
+        migrations: DesktopSettingsMigrations {
+            legacy_renderer_settings_imported: false,
+        },
+    }
+}
+
+fn coerce_release_channel(value: Option<&Value>) -> Option<String> {
+    match value.and_then(Value::as_str) {
+        Some("beta") => Some("beta".to_string()),
+        Some("stable") => Some("stable".to_string()),
+        _ => None,
+    }
+}
+
+fn coerce_desktop_settings(value: &Value) -> DesktopSettings {
+    let mut settings = default_desktop_settings();
+    if !value.is_object() {
+        return settings;
+    }
+    if let Some(release_channel) = coerce_release_channel(value.get("releaseChannel")) {
+        settings.release_channel = release_channel;
+    }
+    if let Some(daemon) = value.get("daemon").and_then(Value::as_object) {
+        if let Some(value) = daemon.get("manageBuiltInDaemon").and_then(Value::as_bool) {
+            settings.daemon.manage_built_in_daemon = value;
+        }
+        if let Some(value) = daemon.get("keepRunningAfterQuit").and_then(Value::as_bool) {
+            settings.daemon.keep_running_after_quit = value;
+        }
+    }
+    settings
+}
+
+fn coerce_desktop_settings_document(value: Value) -> PersistedDesktopSettingsDocument {
+    if !value.is_object() {
+        return default_desktop_settings_document();
+    }
+    let settings = value
+        .get("settings")
+        .map(coerce_desktop_settings)
+        .unwrap_or_else(default_desktop_settings);
+    let legacy_renderer_settings_imported = value
+        .get("migrations")
+        .and_then(Value::as_object)
+        .and_then(|migrations| migrations.get("legacyRendererSettingsImported"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    PersistedDesktopSettingsDocument {
+        version: 1,
+        settings,
+        migrations: DesktopSettingsMigrations {
+            legacy_renderer_settings_imported,
+        },
+    }
+}
+
+fn load_desktop_settings_document(
+    state: &AppState,
+) -> Result<PersistedDesktopSettingsDocument, String> {
+    let path = state.desktop_settings_path();
+    if !path.exists() {
+        let document = default_desktop_settings_document();
+        persist_desktop_settings_document(state, &document)?;
+        return Ok(document);
+    }
+    let raw = fs::read_to_string(&path).map_err(value_to_error)?;
+    let parsed = serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null);
+    let document = coerce_desktop_settings_document(parsed);
+    persist_desktop_settings_document(state, &document)?;
+    Ok(document)
+}
+
+fn persist_desktop_settings_document(
+    state: &AppState,
+    document: &PersistedDesktopSettingsDocument,
+) -> Result<(), String> {
+    fs::create_dir_all(&state.paseo_home).map_err(value_to_error)?;
+    let path = state.desktop_settings_path();
+    let temp_path = path.with_extension("json.tmp");
+    let serialized = serde_json::to_string_pretty(document).map_err(value_to_error)?;
+    fs::write(&temp_path, format!("{serialized}\n")).map_err(value_to_error)?;
+    fs::rename(&temp_path, &path).map_err(value_to_error)?;
+    Ok(())
+}
+
+fn merge_desktop_settings(current: &DesktopSettings, patch: &Value) -> DesktopSettings {
+    let mut next = current.clone();
+    if let Some(release_channel) = coerce_release_channel(patch.get("releaseChannel")) {
+        next.release_channel = release_channel;
+    }
+    if let Some(daemon) = patch.get("daemon").and_then(Value::as_object) {
+        if let Some(value) = daemon.get("manageBuiltInDaemon").and_then(Value::as_bool) {
+            next.daemon.manage_built_in_daemon = value;
+        }
+        if let Some(value) = daemon.get("keepRunningAfterQuit").and_then(Value::as_bool) {
+            next.daemon.keep_running_after_quit = value;
+        }
+    }
+    next
+}
+
+fn pick_desktop_settings_from_legacy_renderer_settings(legacy_settings: &Value) -> Value {
+    let mut patch = serde_json::Map::new();
+    if let Some(release_channel) = coerce_release_channel(legacy_settings.get("releaseChannel")) {
+        patch.insert("releaseChannel".to_string(), json!(release_channel));
+    }
+    if let Some(value) = legacy_settings
+        .get("manageBuiltInDaemon")
+        .and_then(Value::as_bool)
+    {
+        patch.insert(
+            "daemon".to_string(),
+            json!({ "manageBuiltInDaemon": value }),
+        );
+    }
+    Value::Object(patch)
+}
+
+fn get_desktop_settings(state: &AppState) -> Result<DesktopSettings, String> {
+    Ok(load_desktop_settings_document(state)?.settings)
+}
+
+fn patch_desktop_settings(state: &AppState, patch: &Value) -> Result<DesktopSettings, String> {
+    let mut document = load_desktop_settings_document(state)?;
+    document.settings = merge_desktop_settings(&document.settings, patch);
+    persist_desktop_settings_document(state, &document)?;
+    Ok(document.settings)
+}
+
+fn migrate_legacy_desktop_settings(
+    state: &AppState,
+    legacy_settings: &Value,
+) -> Result<DesktopSettings, String> {
+    let mut document = load_desktop_settings_document(state)?;
+    if document.migrations.legacy_renderer_settings_imported {
+        return Ok(document.settings);
+    }
+    let patch = pick_desktop_settings_from_legacy_renderer_settings(legacy_settings);
+    document.settings = merge_desktop_settings(&document.settings, &patch);
+    document.migrations.legacy_renderer_settings_imported = true;
+    persist_desktop_settings_document(state, &document)?;
+    Ok(document.settings)
 }
 
 fn run_cli_text(state: &AppState, args: &[&str]) -> Result<String, String> {
@@ -1048,7 +1238,17 @@ async fn paseo_invoke(
 ) -> Result<Value, String> {
     let args = args.unwrap_or(Value::Null);
     let state = state.inner();
-    match command.as_str() {
+    let result = match command.as_str() {
+        "get_desktop_settings" => {
+            serde_json::to_value(get_desktop_settings(state)?).map_err(value_to_error)
+        }
+        "patch_desktop_settings" => {
+            serde_json::to_value(patch_desktop_settings(state, &args)?).map_err(value_to_error)
+        }
+        "migrate_legacy_desktop_settings" => {
+            serde_json::to_value(migrate_legacy_desktop_settings(state, &args)?)
+                .map_err(value_to_error)
+        }
         "desktop_daemon_status" => {
             serde_json::to_value(desktop_daemon_status(state)).map_err(value_to_error)
         }
@@ -1106,7 +1306,8 @@ async fn paseo_invoke(
             close_local_transport_session(transport_state.inner(), &args)
         }
         _ => Err(format!("Unknown desktop command: {command}")),
-    }
+    };
+    result
 }
 
 #[tauri::command]
