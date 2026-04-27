@@ -42,6 +42,8 @@ export interface DesktopDialogBridge {
 
 export interface DesktopNotificationBridge {
   isSupported?: () => Promise<boolean>;
+  permissionState?: () => Promise<DesktopNotificationPermission>;
+  requestPermission?: () => Promise<DesktopNotificationPermission>;
   sendNotification?: (
     payload: string | { title: string; body?: string; data?: Record<string, unknown> },
   ) => Promise<boolean>;

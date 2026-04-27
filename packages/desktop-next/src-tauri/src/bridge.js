@@ -220,6 +220,12 @@
       isSupported: function () {
         return invoke("notification_is_supported");
       },
+      permissionState: function () {
+        return invoke("notification_permission_state");
+      },
+      requestPermission: function () {
+        return invoke("notification_request_permission");
+      },
       sendNotification: function (payload) {
         return invoke("notification_send", { payload: payload || null });
       },

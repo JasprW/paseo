@@ -174,6 +174,43 @@ describe("desktop-permissions", () => {
     expect(snapshot.notifications.state).toBe("denied");
   });
 
+  it("reads notification permission through the desktop bridge when available", async () => {
+    const permissionState = vi.fn(async () => "denied");
+    ensureWindow().paseoDesktop = {
+      notification: {
+        permissionState,
+      },
+    };
+    (globalThis as { Notification?: unknown }).Notification = { permission: "granted" };
+
+    const { getDesktopPermissionSnapshot } = await loadModuleForPlatform("web");
+    const snapshot = await getDesktopPermissionSnapshot();
+
+    expect(snapshot.notifications.state).toBe("denied");
+    expect(permissionState).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests notification permission through the desktop bridge when available", async () => {
+    const requestPermission = vi.fn(async () => "granted");
+    const MockNotification = {
+      permission: "default",
+      requestPermission: vi.fn(async () => "denied"),
+    };
+    ensureWindow().paseoDesktop = {
+      notification: {
+        requestPermission,
+      },
+    };
+    (globalThis as { Notification?: unknown }).Notification = MockNotification;
+
+    const { requestDesktopPermission } = await loadModuleForPlatform("web");
+    const result = await requestDesktopPermission({ kind: "notifications" });
+
+    expect(result.state).toBe("granted");
+    expect(requestPermission).toHaveBeenCalledTimes(1);
+    expect(MockNotification.requestPermission).not.toHaveBeenCalled();
+  });
+
   it("requests microphone permission and stops acquired tracks", async () => {
     const stop = vi.fn();
     const getUserMedia = vi.fn(async () => ({

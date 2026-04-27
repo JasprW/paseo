@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
-    env, fs, io,
+    env,
+    ffi::CString,
+    fs, io,
+    os::raw::c_char,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -14,7 +17,11 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window};
+#[cfg(not(target_os = "macos"))]
+use tauri::plugin::PermissionState;
+use tauri::{AppHandle, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window};
+#[cfg(not(target_os = "macos"))]
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
@@ -75,6 +82,13 @@ struct PidLockInfo {
     desktop_managed: Option<bool>,
 }
 
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn paseo_notification_authorization_status() -> i32;
+    fn paseo_notification_request_authorization() -> i32;
+    fn paseo_notification_send(title: *const c_char, body: *const c_char) -> i32;
+}
+
 fn main() {
     run();
 }
@@ -83,6 +97,7 @@ fn run() {
     let state = AppState::from_environment();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(state)
         .manage(LocalTransportState::default())
         .setup(|app| {
@@ -130,6 +145,8 @@ fn run() {
             dialog_ask,
             dialog_open,
             notification_is_supported,
+            notification_permission_state,
+            notification_request_permission,
             notification_send,
             open_url,
             menu_show_context_menu
@@ -343,6 +360,18 @@ fn resolve_node_path() -> PathBuf {
 
 fn value_to_error(error: impl ToString) -> String {
     error.to_string()
+}
+
+fn value_to_trimmed_string(value: Option<&Value>) -> Option<String> {
+    value
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn string_to_cstring(value: &str) -> Option<CString> {
+    CString::new(value.replace('\0', "")).ok()
 }
 
 fn run_cli_text(state: &AppState, args: &[&str]) -> Result<String, String> {
@@ -1208,13 +1237,110 @@ fn dialog_open(options: Option<Value>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn notification_is_supported() -> bool {
-    false
+fn notification_is_supported(app: AppHandle) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return true;
+    }
+    #[cfg(not(target_os = "macos"))]
+    app.notification().permission_state().is_ok()
 }
 
 #[tauri::command]
-fn notification_send(_payload: Option<Value>) -> bool {
-    false
+fn notification_permission_state(app: AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return Ok(macos_notification_permission_state_to_string(unsafe {
+            paseo_notification_authorization_status()
+        })
+        .to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    app.notification()
+        .permission_state()
+        .map(notification_permission_state_to_string)
+        .map(ToString::to_string)
+        .map_err(value_to_error)
+}
+
+#[tauri::command]
+fn notification_request_permission(app: AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return Ok(macos_notification_permission_state_to_string(unsafe {
+            paseo_notification_request_authorization()
+        })
+        .to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    app.notification()
+        .request_permission()
+        .map(notification_permission_state_to_string)
+        .map(ToString::to_string)
+        .map_err(value_to_error)
+}
+
+#[cfg(target_os = "macos")]
+fn macos_notification_permission_state_to_string(permission: i32) -> &'static str {
+    match permission {
+        1 => "denied",
+        2 => "granted",
+        _ => "default",
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn notification_permission_state_to_string(permission: PermissionState) -> &'static str {
+    match permission {
+        PermissionState::Granted => "granted",
+        PermissionState::Denied => "denied",
+        PermissionState::Prompt | PermissionState::PromptWithRationale => "default",
+    }
+}
+
+#[tauri::command]
+fn notification_send(app: AppHandle, payload: Option<Value>) -> bool {
+    #[cfg(target_os = "macos")]
+    let _ = app;
+    let payload = payload.unwrap_or(Value::Null);
+    let title = match payload.as_str() {
+        Some(title) => Some(title.trim().to_string()),
+        None => value_to_trimmed_string(payload.get("title")),
+    }
+    .filter(|title| !title.is_empty());
+    let Some(title) = title else {
+        return false;
+    };
+
+    #[cfg(target_os = "macos")]
+    {
+        let Some(title) = string_to_cstring(&title) else {
+            return false;
+        };
+        let body =
+            value_to_trimmed_string(payload.get("body")).and_then(|body| string_to_cstring(&body));
+        return unsafe {
+            paseo_notification_send(
+                title.as_ptr(),
+                body.as_ref()
+                    .map(|body| body.as_ptr())
+                    .unwrap_or(std::ptr::null()),
+            )
+        } == 1;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut notification = app.notification().builder().title(title).silent();
+        if let Some(body) = value_to_trimmed_string(payload.get("body")) {
+            notification = notification.body(body);
+        }
+
+        notification.show().is_ok()
+    }
 }
 
 #[tauri::command]

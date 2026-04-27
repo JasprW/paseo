@@ -1,5 +1,6 @@
 import { getDesktopHost } from "@/desktop/host";
 import { isWeb, isNative } from "@/constants/platform";
+import type { DesktopNotificationPermission } from "@/desktop/host";
 
 export type DesktopPermissionKind = "notifications" | "microphone";
 
@@ -132,6 +133,12 @@ function mapNotificationPermissionString(permission: string): DesktopPermissionS
   });
 }
 
+function mapDesktopNotificationPermission(
+  permission: DesktopNotificationPermission,
+): DesktopPermissionStatus {
+  return mapNotificationPermissionString(permission);
+}
+
 async function getNotificationPermissionStatus(): Promise<DesktopPermissionStatus> {
   if (isNative) {
     return status({
@@ -141,6 +148,14 @@ async function getNotificationPermissionStatus(): Promise<DesktopPermissionStatu
   }
 
   const desktopHost = getDesktopHost();
+  if (typeof desktopHost?.notification?.permissionState === "function") {
+    try {
+      return mapDesktopNotificationPermission(await desktopHost.notification.permissionState());
+    } catch {
+      // Fall through to the older support probe or web API check.
+    }
+  }
+
   if (desktopHost && typeof desktopHost.notification?.isSupported === "function") {
     try {
       const supported = await desktopHost.notification.isSupported();
@@ -242,6 +257,18 @@ async function requestNotificationPermissionStatus(): Promise<DesktopPermissionS
       state: "unavailable",
       detail: "Desktop notification requests are only available on web runtime.",
     });
+  }
+
+  const desktopHost = getDesktopHost();
+  if (typeof desktopHost?.notification?.requestPermission === "function") {
+    try {
+      return mapDesktopNotificationPermission(await desktopHost.notification.requestPermission());
+    } catch (error) {
+      return status({
+        state: "unknown",
+        detail: `Failed to request notification permission: ${getErrorMessage(error)}`,
+      });
+    }
   }
 
   const NotificationConstructor = getWebNotificationConstructor();
