@@ -46,6 +46,13 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
   useUnistyles: () => ({ theme }),
+  withUnistyles:
+    (Component: React.ComponentType<Record<string, unknown>>) =>
+    ({ uniProps, ...props }: Record<string, unknown>) => {
+      const mappedProps =
+        typeof uniProps === "function" ? (uniProps as (t: typeof theme) => unknown)(theme) : {};
+      return React.createElement(Component, { ...(mappedProps as object), ...props });
+    },
 }));
 
 vi.mock("@/constants/layout", () => ({
@@ -66,6 +73,7 @@ vi.mock("react-native-reanimated", () => ({
     View: "div",
   },
   Easing: {
+    bezier: vi.fn(),
     linear: vi.fn(),
   },
   cancelAnimation: vi.fn(),
@@ -110,6 +118,7 @@ vi.mock("lucide-react-native", () => {
     TriangleAlertIcon: createIcon("TriangleAlertIcon"),
     Scissors: createIcon("Scissors"),
     MicVocal: createIcon("MicVocal"),
+    FileSymlink: createIcon("FileSymlink"),
   };
 });
 
