@@ -1268,6 +1268,9 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
     overflow: "hidden",
     ...(isWeb ? { cursor: "auto" as const, userSelect: "text" as const } : {}),
   },
+  detailClip: {
+    overflow: "hidden",
+  },
   pressableExpanded: {
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
@@ -2591,6 +2594,11 @@ function useDetailWheelPropagationBlocker(input: {
 
 const SHIMMER_GRADIENT =
   "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
+const EXPANDABLE_BADGE_DETAIL_TOGGLE_DURATION = 180;
+const EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION = {
+  duration: EXPANDABLE_BADGE_DETAIL_TOGGLE_DURATION,
+  easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+};
 
 function buildShimmerTextStyle(input: {
   isWebShimmer: boolean;
@@ -2616,6 +2624,137 @@ function buildShimmerTextStyle(input: {
   };
 }
 
+function useExpandableBadgeDetailAnimation(input: {
+  isExpanded: boolean;
+  hasDetailContent: boolean;
+}) {
+  const { isExpanded, hasDetailContent } = input;
+  const [shouldRenderDetails, setShouldRenderDetails] = useState(isExpanded && hasDetailContent);
+  const [measuredDetailHeight, setMeasuredDetailHeight] = useState(0);
+  const measuredDetailHeightRef = useRef(0);
+  const detailAnimatedHeight = useSharedValue(0);
+  const detailAnimatedOpacity = useSharedValue(isExpanded ? 1 : 0);
+
+  useEffect(() => {
+    if (!hasDetailContent) {
+      setShouldRenderDetails(false);
+      detailAnimatedHeight.value = withTiming(0, EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION);
+      detailAnimatedOpacity.value = withTiming(0, EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION);
+      return;
+    }
+
+    let hideDetailsTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (isExpanded) {
+      setShouldRenderDetails(true);
+    } else {
+      hideDetailsTimeout = setTimeout(() => {
+        setShouldRenderDetails(false);
+      }, EXPANDABLE_BADGE_DETAIL_TOGGLE_DURATION);
+    }
+
+    detailAnimatedHeight.value = withTiming(
+      isExpanded ? measuredDetailHeight : 0,
+      EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION,
+    );
+    detailAnimatedOpacity.value = withTiming(
+      isExpanded ? 1 : 0,
+      EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION,
+    );
+
+    return () => {
+      if (hideDetailsTimeout) {
+        clearTimeout(hideDetailsTimeout);
+      }
+    };
+  }, [
+    detailAnimatedHeight,
+    detailAnimatedOpacity,
+    hasDetailContent,
+    isExpanded,
+    measuredDetailHeight,
+  ]);
+
+  const handleDetailLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+      if (nextHeight <= 0 || Math.abs(nextHeight - measuredDetailHeightRef.current) < 1) {
+        return;
+      }
+      measuredDetailHeightRef.current = nextHeight;
+      setMeasuredDetailHeight(nextHeight);
+      if (isExpanded) {
+        detailAnimatedHeight.value = withTiming(
+          nextHeight,
+          EXPANDABLE_BADGE_DETAIL_TOGGLE_ANIMATION,
+        );
+      }
+    },
+    [detailAnimatedHeight, isExpanded],
+  );
+
+  const animatedDetailClipStyle = useAnimatedStyle(() => ({
+    height: detailAnimatedHeight.value,
+    opacity: detailAnimatedOpacity.value,
+  }));
+  const detailClipStyle = useMemo(
+    () => [expandableBadgeStylesheet.detailClip, animatedDetailClipStyle],
+    [animatedDetailClipStyle],
+  );
+
+  return { shouldRenderDetails, detailClipStyle, handleDetailLayout };
+}
+
+function resolveExpandableBadgeDetailContent(input: {
+  hasDetailContent: boolean;
+  shouldRenderDetails: boolean;
+  renderDetails?: () => ReactNode;
+}): ReactNode | null {
+  const { hasDetailContent, shouldRenderDetails, renderDetails } = input;
+  if (!hasDetailContent || !shouldRenderDetails) {
+    return null;
+  }
+  return renderDetails?.() ?? null;
+}
+
+function ExpandableBadgeAnimatedDetail({
+  isExpanded,
+  shouldRenderDetails,
+  detailContent,
+  detailClipStyle,
+  detailWrapperRef,
+  onDetailLayout,
+  onDetailHoverIn,
+  onDetailHoverOut,
+}: {
+  isExpanded: boolean;
+  shouldRenderDetails: boolean;
+  detailContent: ReactNode | null;
+  detailClipStyle: StyleProp<ViewStyle>;
+  detailWrapperRef: React.RefObject<View | null>;
+  onDetailLayout: (event: LayoutChangeEvent) => void;
+  onDetailHoverIn: () => void;
+  onDetailHoverOut: () => void;
+}) {
+  if (!shouldRenderDetails || !detailContent) {
+    return null;
+  }
+
+  return (
+    <Animated.View style={detailClipStyle} pointerEvents={isExpanded ? "auto" : "none"}>
+      <Pressable
+        ref={detailWrapperRef}
+        style={expandableBadgeStylesheet.detailWrapper}
+        onLayout={onDetailLayout}
+        onHoverIn={onDetailHoverIn}
+        onHoverOut={onDetailHoverOut}
+      >
+        {detailContent}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
@@ -2638,7 +2777,13 @@ const ExpandableBadge = memo(function ExpandableBadge({
   const [isPressed, setIsPressed] = useState(false);
   const isInteractive = Boolean(onToggle);
   const hasDetailContent = Boolean(renderDetails);
-  const detailContent = hasDetailContent && isExpanded ? renderDetails?.() : null;
+  const { shouldRenderDetails, detailClipStyle, handleDetailLayout } =
+    useExpandableBadgeDetailAnimation({ isExpanded, hasDetailContent });
+  const detailContent = resolveExpandableBadgeDetailContent({
+    hasDetailContent,
+    shouldRenderDetails,
+    renderDetails,
+  });
   const detailWrapperRef = useRef<View | null>(null);
 
   const handleHoverIn = useCallback(() => setIsHovered(true), []);
@@ -2915,16 +3060,16 @@ const ExpandableBadge = memo(function ExpandableBadge({
           />
         </View>
       </Pressable>
-      {detailContent ? (
-        <Pressable
-          ref={detailWrapperRef}
-          style={expandableBadgeStylesheet.detailWrapper}
-          onHoverIn={handleDetailHoverIn}
-          onHoverOut={handleDetailHoverOut}
-        >
-          {detailContent}
-        </Pressable>
-      ) : null}
+      <ExpandableBadgeAnimatedDetail
+        isExpanded={isExpanded}
+        shouldRenderDetails={shouldRenderDetails}
+        detailContent={detailContent}
+        detailClipStyle={detailClipStyle}
+        detailWrapperRef={detailWrapperRef}
+        onDetailLayout={handleDetailLayout}
+        onDetailHoverIn={handleDetailHoverIn}
+        onDetailHoverOut={handleDetailHoverOut}
+      />
     </View>
   );
 }, areExpandableBadgePropsEqual);
