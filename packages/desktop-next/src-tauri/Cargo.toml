@@ -1,6 +1,6 @@
 [package]
 name = "paseo_next"
-version = "0.1.62"
+version = "0.1.64"
 description = "Paseo Next desktop app"
 authors = ["Mohamed Boudra <hello@moboudra.com>"]
 license = "AGPL-3.0-or-later"
