@@ -1,6 +1,6 @@
 {
   "name": "@getpaseo/desktop-next",
-  "version": "0.1.63-beta.3",
+  "version": "0.1.64",
   "private": true,
   "description": "Paseo Next desktop app (Tauri wrapper)",
   "homepage": "https://paseo.sh",
