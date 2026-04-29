@@ -1622,6 +1622,62 @@ export class HostRuntimeStore {
     void this.persistHosts();
   }
 
+  private waitForConnectionOnline(input: {
+    serverId: string;
+    connectionId: string;
+    timeoutMs?: number;
+  }): Promise<void> {
+    const timeoutMs = input.timeoutMs ?? DEFAULT_LOCALHOST_BOOTSTRAP_TIMEOUT_MS;
+    const isTargetOnline = () => {
+      const snapshot = this.getSnapshot(input.serverId);
+      return (
+        snapshot?.connectionStatus === "online" &&
+        snapshot.activeConnectionId === input.connectionId
+      );
+    };
+
+    if (isTargetOnline()) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let unsubscribe: (() => void) | null = null;
+
+      const finish = (error?: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+        unsubscribe?.();
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        finish(
+          new Error(
+            `Timed out waiting for host ${input.serverId} connection ${input.connectionId} to come online.`,
+          ),
+        );
+      }, timeoutMs);
+
+      unsubscribe = this.subscribe(input.serverId, () => {
+        if (isTargetOnline()) {
+          finish();
+        }
+      });
+
+      if (isTargetOnline()) {
+        finish();
+      }
+    });
+  }
+
   async renameHost(serverId: string, label: string): Promise<void> {
     const next = this.hosts.map((h) =>
       h.serverId === serverId ? { ...h, label, updatedAt: new Date().toISOString() } : h,
