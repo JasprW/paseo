@@ -202,6 +202,7 @@ describe("normalizeWorkspaceDescriptor", () => {
       name: "main",
       status: "running",
       activityAt: null,
+      archivingAt: null,
       diffStat: null,
       scripts: [],
       gitRuntime: {
