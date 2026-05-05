@@ -857,7 +857,7 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
     },
     subAgentSessionText: {
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.xs,
       color: theme.colors.foregroundMuted,
       lineHeight: 18,
@@ -873,13 +873,13 @@ const styles = StyleSheet.create((theme) => {
       gap: theme.spacing[2],
     },
     subAgentActionTool: {
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.xs,
       color: theme.colors.foregroundMuted,
       lineHeight: 18,
     },
     subAgentActionSummary: {
-      fontFamily: Fonts.mono,
+      fontFamily: theme.fontFamily.mono,
       fontSize: theme.fontSize.xs,
       color: theme.colors.foreground,
       lineHeight: 18,

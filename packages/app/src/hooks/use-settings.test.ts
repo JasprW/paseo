@@ -259,6 +259,7 @@ describe("use-settings", () => {
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
       chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
     });
@@ -452,6 +453,7 @@ describe("use-settings", () => {
       monoFont: mod.DEFAULT_APP_SETTINGS.monoFont,
       chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
+      serviceUrlBehavior: "ask",
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
     });
