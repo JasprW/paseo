@@ -12,6 +12,7 @@ import {
   buildLocalDaemonTransportUrl,
   createDesktopLocalDaemonTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
+import type { LocalTransportTarget } from "@/desktop/daemon/desktop-daemon";
 
 export interface DaemonProbeClient {
   readonly lastError: string | null;
@@ -20,10 +21,7 @@ export interface DaemonProbeClient {
   getLastServerInfoMessage(): { serverId: string; hostname: string | null } | null;
 }
 
-interface LocalTransportUrlInput {
-  transportType: "socket" | "pipe";
-  transportPath: string;
-}
+type LocalTransportUrlInput = Extract<LocalTransportTarget, { transportType: "socket" | "pipe" }>;
 
 export interface DaemonConnectionDependencies<TClient extends DaemonProbeClient> {
   getClientId(): Promise<string>;

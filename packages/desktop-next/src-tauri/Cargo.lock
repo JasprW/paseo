@@ -2574,7 +2574,7 @@ dependencies = [
 
 [[package]]
 name = "paseo_next"
-version = "0.1.69"
+version = "0.1.73"
 dependencies = [
  "base64 0.22.1",
  "cc",

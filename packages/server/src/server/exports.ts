@@ -1,4 +1,6 @@
 // CLI exports for @getpaseo/server
+import { PARENT_AGENT_ID_LABEL as PARENT_AGENT_ID_LABEL_VALUE } from "../shared/agent-labels.js";
+
 export { createPaseoDaemon, type PaseoDaemon, type PaseoDaemonConfig } from "./bootstrap.js";
 export { loadConfig, type CliConfigOverrides } from "./config.js";
 export { resolvePaseoHome } from "./paseo-home.js";
@@ -32,7 +34,7 @@ export {
   parseConnectionUri,
   shouldUseTlsForDefaultHostedRelay,
 } from "../shared/daemon-endpoints.js";
-export { PARENT_AGENT_ID_LABEL } from "../shared/agent-labels.js";
+export const PARENT_AGENT_ID_LABEL = PARENT_AGENT_ID_LABEL_VALUE;
 export {
   DirectTcpHostConnectionSchema,
   type DirectTcpHostConnection,
