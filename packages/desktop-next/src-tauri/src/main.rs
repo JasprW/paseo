@@ -1209,9 +1209,12 @@ fn send_local_transport_message(
         .lock()
         .map_err(value_to_error)?
         .get(&input.session_id)
-        .cloned()
-        .ok_or_else(|| format!("Local transport session not found: {}", input.session_id))?;
-    sender.send(message).map_err(value_to_error)?;
+        .cloned();
+    // Session may have closed between the JS send call and this handler — that is a normal race
+    // when the connection drops, not an error worth propagating back to the caller.
+    if let Some(sender) = sender {
+        sender.send(message).map_err(value_to_error)?;
+    }
     Ok(json!(true))
 }
 

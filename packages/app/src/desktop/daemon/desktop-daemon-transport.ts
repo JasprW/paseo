@@ -166,17 +166,17 @@ export function createDesktopLocalDaemonTransportFactory(): DaemonTransportFacto
           return;
         }
         if (typeof data === "string") {
-          void sendLocalTransportMessage({ sessionId, text: data }).catch((error) =>
-            emitError(error),
-          );
+          void sendLocalTransportMessage({ sessionId, text: data }).catch((error) => {
+            if (!disposed) emitError(error);
+          });
           return;
         }
         const binaryBase64 = encodeBinaryToBase64(
           data instanceof ArrayBuffer ? data : new Uint8Array(data),
         );
-        void sendLocalTransportMessage({ sessionId, binaryBase64 }).catch((error) =>
-          emitError(error),
-        );
+        void sendLocalTransportMessage({ sessionId, binaryBase64 }).catch((error) => {
+          if (!disposed) emitError(error);
+        });
       },
       close: () => {
         disposed = true;

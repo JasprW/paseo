@@ -171,8 +171,9 @@ export async function sendLocalTransportMessage(input: {
   binaryBase64?: string;
 }): Promise<void> {
   const session = sessions.get(input.sessionId);
+  // Session may have closed between the JS send call and this handler — normal race on disconnect.
   if (!session) {
-    throw new Error(`Local transport session not found: ${input.sessionId}`);
+    return;
   }
 
   if (session.state !== "open" || session.ws.readyState !== WebSocket.OPEN) {
