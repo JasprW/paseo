@@ -29,6 +29,20 @@
     });
   }
 
+  function installNativeFeelGuards() {
+    if (document && document.documentElement) {
+      document.documentElement.dataset.paseoDesktopRuntime = "tauri";
+    }
+
+    window.addEventListener(
+      "contextmenu",
+      function (event) {
+        event.preventDefault();
+      },
+      true,
+    );
+  }
+
   var PASEO_DRAG_REGION_ATTR = "data-paseo-window-drag-region";
   var LEGACY_TAURI_DRAG_REGION_ATTR = "data-tauri-drag-region";
   var DRAG_START_DISTANCE_PX = 8;
@@ -172,6 +186,7 @@
   }
 
   window.paseoDesktop = {
+    runtime: "tauri",
     platform: platform,
     invoke: function (command, args) {
       return invoke("paseo_invoke", { command: command, args: args || null });
@@ -242,5 +257,6 @@
     },
   };
 
+  installNativeFeelGuards();
   installTauriDragBridge();
 })();

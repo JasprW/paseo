@@ -2592,6 +2592,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "url",
+ "window-vibrancy",
 ]
 
 [[package]]

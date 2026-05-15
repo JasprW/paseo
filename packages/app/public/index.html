@@ -20,6 +20,19 @@
       body {
         overflow: hidden;
       }
+      html[data-paseo-desktop-runtime="tauri"],
+      html[data-paseo-desktop-runtime="tauri"] body,
+      html[data-paseo-desktop-runtime="tauri"] #root {
+        background: transparent;
+      }
+      html[data-paseo-desktop-runtime="tauri"] button,
+      html[data-paseo-desktop-runtime="tauri"] a,
+      html[data-paseo-desktop-runtime="tauri"] [role="button"],
+      html[data-paseo-desktop-runtime="tauri"] [role="link"],
+      html[data-paseo-desktop-runtime="tauri"] [role="tab"],
+      html[data-paseo-desktop-runtime="tauri"] [role="menuitem"] {
+        cursor: default;
+      }
       /* Prevent white flash before React mounts */
       @media (prefers-color-scheme: dark) {
         html,

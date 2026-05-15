@@ -48,7 +48,7 @@ import { startDaemonIfGateAllows, startHostRuntimeBootstrap } from "@/app/host-r
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { updateDesktopWindowControls } from "@/desktop/electron/window";
-import { getDesktopHost } from "@/desktop/host";
+import { getDesktopHost, isTauriRuntime } from "@/desktop/host";
 import { loadDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { RosettaCalloutSource } from "@/desktop/updates/rosetta-callout-source";
 import { UpdateCalloutSource } from "@/desktop/updates/update-callout-source";
@@ -829,15 +829,16 @@ const AGENT_SCREEN_OPTIONS = { gestureEnabled: false };
 function RootStack() {
   const storeReady = useStoreReady();
   const { theme } = useUnistyles();
+  const contentBackgroundColor = isTauriRuntime() ? "transparent" : theme.colors.surface0;
   const stackScreenOptions = useMemo(
     () => ({
       headerShown: false,
       animation: "none" as const,
       contentStyle: {
-        backgroundColor: theme.colors.surface0,
+        backgroundColor: contentBackgroundColor,
       },
     }),
-    [theme.colors.surface0],
+    [contentBackgroundColor],
   );
   return (
     <Stack screenOptions={stackScreenOptions}>
@@ -912,9 +913,17 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
+  const rootSurfaceStyle = useMemo(
+    () =>
+      isTauriRuntime()
+        ? [layoutStyles.surfaceFill, layoutStyles.nativeMaterialSurface]
+        : layoutStyles.surfaceFill,
+    [],
+  );
+
   return (
     <GestureHandlerRootView style={flexStyle}>
-      <View style={layoutStyles.surfaceFill}>
+      <View style={rootSurfaceStyle}>
         <RootProviders>
           <RuntimeProviders>
             <AppShell />
@@ -929,5 +938,8 @@ const layoutStyles = StyleSheet.create((theme) => ({
   surfaceFill: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+  },
+  nativeMaterialSurface: {
+    backgroundColor: "transparent",
   },
 }));

@@ -101,6 +101,7 @@ export interface DesktopInvokeBridge {
 }
 
 export interface DesktopHostBridge {
+  runtime?: "electron" | "tauri";
   platform?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
@@ -143,4 +144,8 @@ export function isElectronRuntimeMac(): boolean {
   }
   const ua = navigator.userAgent;
   return ua.includes("Mac OS") || ua.includes("Macintosh");
+}
+
+export function isTauriRuntime(): boolean {
+  return getDesktopHost()?.runtime === "tauri";
 }

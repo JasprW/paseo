@@ -133,6 +133,7 @@ fn run() {
                 .title("Paseo Next")
                 .inner_size(1200.0, 800.0)
                 .min_inner_size(720.0, 560.0)
+                .transparent(true)
                 .initialization_script(BRIDGE_SCRIPT);
 
             #[cfg(target_os = "macos")]
@@ -150,7 +151,7 @@ fn run() {
             let window = builder.build()?;
 
             #[cfg(target_os = "macos")]
-            set_macos_window_background(&window, 0x18, 0x1b, 0x1a);
+            apply_macos_native_material(&window, 0x18, 0x1b, 0x1a);
 
             let resize_window = window.clone();
             window.on_window_event(move |event| match event {
@@ -187,6 +188,7 @@ fn run() {
 fn set_macos_window_background(window: &WebviewWindow, red: u8, green: u8, blue: u8) {
     use cocoa::appkit::{NSColor, NSWindow};
     use cocoa::base::{id, nil};
+    use objc::runtime::YES;
 
     if let Ok(ns_window) = window.ns_window() {
         unsafe {
@@ -198,8 +200,42 @@ fn set_macos_window_background(window: &WebviewWindow, red: u8, green: u8, blue:
                 1.0,
             );
             let ns_window = ns_window as id;
+            ns_window.setOpaque_(YES);
             ns_window.setBackgroundColor_(color);
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_native_material(
+    window: &WebviewWindow,
+    fallback_red: u8,
+    fallback_green: u8,
+    fallback_blue: u8,
+) {
+    use cocoa::appkit::{NSColor, NSWindow};
+    use cocoa::base::{id, nil};
+    use objc::runtime::{NO, YES};
+    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+
+    if let Ok(ns_window) = window.ns_window() {
+        unsafe {
+            let ns_window = ns_window as id;
+            ns_window.setOpaque_(NO);
+            ns_window.setTitlebarAppearsTransparent_(YES);
+            ns_window.setBackgroundColor_(NSColor::clearColor(nil));
+        }
+    }
+
+    if apply_vibrancy(
+        window,
+        NSVisualEffectMaterial::WindowBackground,
+        Some(NSVisualEffectState::FollowsWindowActiveState),
+        None,
+    )
+    .is_err()
+    {
+        set_macos_window_background(window, fallback_red, fallback_green, fallback_blue);
     }
 }
 
