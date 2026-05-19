@@ -260,6 +260,7 @@ describe("use-settings", () => {
       chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
+      terminalScrollbackLines: 10_000,
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
     });
@@ -454,6 +455,7 @@ describe("use-settings", () => {
       chatLineHeightMultiplier: 1,
       sendBehavior: "interrupt",
       serviceUrlBehavior: "ask",
+      terminalScrollbackLines: 10_000,
       manageBuiltInDaemon: true,
       releaseChannel: "stable",
     });

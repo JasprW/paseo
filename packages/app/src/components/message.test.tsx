@@ -6,8 +6,8 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { theme } = vi.hoisted(() => ({
-  theme: {
+const { theme, runThemeFactory } = vi.hoisted(() => {
+  const mockTheme = {
     spacing: { 1: 4, 2: 8, 3: 12, 4: 16 },
     borderWidth: { 1: 1 },
     borderRadius: { sm: 4, md: 6, lg: 8, "2xl": 16, full: 999 },
@@ -31,26 +31,37 @@ const { theme } = vi.hoisted(() => ({
       accent: "#0a84ff",
       accentForeground: "#fff",
       destructive: "#ff4444",
+      syntax: new Proxy(
+        {},
+        {
+          get: () => "#fff",
+        },
+      ),
       palette: {
         white: "#fff",
         green: { 400: "#30d158" },
         red: { 500: "#ff453a" },
       },
     },
-  },
-}));
+  };
+
+  const applyThemeFactory = (factory: unknown) =>
+    typeof factory === "function"
+      ? (factory as (themeValue: unknown) => unknown)(mockTheme)
+      : factory;
+
+  return { theme: mockTheme, runThemeFactory: applyThemeFactory };
+});
 
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
-    create: (factory: unknown) =>
-      typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
+    create: runThemeFactory,
   },
   useUnistyles: () => ({ theme }),
   withUnistyles:
     (Component: React.ComponentType<Record<string, unknown>>) =>
     ({ uniProps, ...props }: Record<string, unknown>) => {
-      const mappedProps =
-        typeof uniProps === "function" ? (uniProps as (t: typeof theme) => unknown)(theme) : {};
+      const mappedProps = runThemeFactory(uniProps);
       return React.createElement(Component, { ...(mappedProps as object), ...props });
     },
 }));
@@ -143,6 +154,14 @@ vi.mock("@/styles/markdown-styles", () => ({
   createMarkdownStyles: vi.fn(() => ({})),
 }));
 
+vi.mock("@getpaseo/highlight", () => ({
+  highlightCode: vi.fn((code: string) =>
+    code.split("\n").map((line) => [{ text: line, style: null }]),
+  ),
+  darkHighlightColors: new Proxy({}, { get: () => "#fff" }),
+  lightHighlightColors: new Proxy({}, { get: () => "#000" }),
+}));
+
 vi.mock("@/utils/tool-call-display", () => ({
   buildToolCallDisplayModel: vi.fn(),
 }));
@@ -166,6 +185,17 @@ vi.mock("@/utils/assistant-image-metadata", () => ({
 
 vi.mock("@/utils/assistant-message-height-estimate", () => ({
   setAssistantMarkdownBlockHeight: vi.fn(),
+}));
+
+vi.mock("@/assistant-file-links", () => ({
+  AssistantInlineCodePathLink: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
+  AssistantMarkdownCodeLink: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
+  AssistantMarkdownLink: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
+  classifyAssistantFileLink: vi.fn(() => null),
+  useAssistantFileLinkResolver: () => ({
+    open: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 vi.mock("@/utils/assistant-image-source", () => ({
