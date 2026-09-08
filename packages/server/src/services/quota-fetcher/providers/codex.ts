@@ -14,6 +14,7 @@ import {
   ApiNumberSchema,
   balanceToneFromRemaining,
   toneFromUsedPct,
+  toIsoStringOrNull,
   fetchProviderApi,
   unavailableUsage,
   usedPctOf,
@@ -44,8 +45,8 @@ const CodexAdditionalRateLimitSchema = z.object({
     .object({
       allowed: z.boolean().optional(),
       limit_reached: z.boolean().optional(),
-      primary_window: CodexWindowSchema.nullish(),
-      secondary_window: CodexWindowSchema.nullish(),
+      primary_window: z.unknown().optional(),
+      secondary_window: z.unknown().optional(),
     })
     .nullish(),
 });
@@ -110,7 +111,7 @@ function codexWindow(
   if (!window) return null;
   return {
     usedPct: window.used_percent ?? 0,
-    resetsAt: window.reset_at != null ? new Date(window.reset_at * 1000).toISOString() : null,
+    resetsAt: window.reset_at != null ? toIsoStringOrNull(window.reset_at * 1000) : null,
   };
 }
 
@@ -193,7 +194,7 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
         limit: spendLimit.limit,
         unit: "credits",
         resetsAt:
-          spendLimit.reset_at != null ? new Date(spendLimit.reset_at * 1000).toISOString() : null,
+          spendLimit.reset_at != null ? toIsoStringOrNull(spendLimit.reset_at * 1000) : null,
         tone: toneFromUsedPct(usedPct),
       });
     } else if (resp.credits?.balance != null) {
@@ -239,6 +240,16 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
     );
   }
 
+  private additionalWindow(window: unknown): ReturnType<typeof codexWindow> {
+    if (window == null) return null;
+    const parsed = CodexWindowSchema.safeParse(window);
+    if (!parsed.success) {
+      this.logger.warn("Skipping unparseable Codex feature window");
+      return null;
+    }
+    return codexWindow(parsed.data);
+  }
+
   /**
    * Per-feature rate-limit windows for ChatGPT Business/Enterprise accounts,
    * which omit the top-level rate_limit block entirely.
@@ -250,6 +261,7 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
       this.logger.warn("Skipping unparseable Codex additional rate limits");
       return windows;
     }
+    const identities = new Map<string, number>();
     for (const [index, entry] of parsedLimits.data.entries()) {
       const parsedFeature = CodexAdditionalRateLimitSchema.safeParse(entry);
       if (!parsedFeature.success) {
@@ -258,12 +270,32 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
       }
       const feature = parsedFeature.data;
       const featureName = feature.limit_name || feature.metered_feature || `Feature ${index + 1}`;
-      const featureSession = codexWindow(feature.rate_limit?.primary_window);
-      const featureWeekly = codexWindow(feature.rate_limit?.secondary_window);
+      const featureSession = this.additionalWindow(feature.rate_limit?.primary_window);
+      const featureWeekly = this.additionalWindow(feature.rate_limit?.secondary_window);
+      if (!featureSession && !featureWeekly) continue;
+      const meteredFeature = feature.metered_feature?.trim();
+      const limitName = feature.limit_name?.trim();
+      // Namespaces and escaping keep fallback names and duplicate suffixes from
+      // colliding with real feature IDs. Anonymous/duplicate entries have no
+      // distinct server identity, so only those fall back to response order.
+      let namespace = "anonymous";
+      let value = String(index);
+      if (meteredFeature) {
+        namespace = "metered";
+        value = meteredFeature;
+      } else if (limitName) {
+        namespace = "name";
+        value = limitName;
+      }
+      const escapedValue = value.replaceAll("%", "%25").replaceAll(":", "%3A");
+      const identity = `${namespace}:${escapedValue}`;
+      const occurrence = (identities.get(identity) ?? 0) + 1;
+      identities.set(identity, occurrence);
+      const featureId = occurrence === 1 ? identity : `${identity}:${occurrence}`;
       if (featureSession) {
         windows.push(
           windowFromUsedPct({
-            id: `session_${index}`,
+            id: `session_${featureId}`,
             label: `Session · ${featureName}`,
             utilizationPct: featureSession.usedPct,
             resetsAt: featureSession.resetsAt,
@@ -274,7 +306,7 @@ export class CodexQuotaProvider implements ProviderUsageFetcher {
       if (featureWeekly) {
         windows.push(
           windowFromUsedPct({
-            id: `weekly_${index}`,
+            id: `weekly_${featureId}`,
             label: `Weekly · ${featureName}`,
             utilizationPct: featureWeekly.usedPct,
             resetsAt: featureWeekly.resetsAt,

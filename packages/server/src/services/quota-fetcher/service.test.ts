@@ -841,6 +841,248 @@ describe("real provider usage fetchers", () => {
     });
   });
 
+  it.each([
+    {
+      malformed: "primary_window",
+      valid: "secondary_window",
+      id: "weekly_name:Feature",
+      label: "Weekly · Feature",
+    },
+    {
+      malformed: "secondary_window",
+      valid: "primary_window",
+      id: "session_name:Feature",
+      label: "Session · Feature",
+    },
+  ])(
+    "keeps the valid Codex sibling when $malformed is malformed",
+    async ({ malformed, valid, id, label }) => {
+      writeCodexAuth(codexHome, "at_codex_valid");
+      fetchApi = mockFetch(
+        new Map([
+          [
+            "https://chatgpt.com/backend-api/wham/usage",
+            () =>
+              jsonResponse({
+                plan_type: "business",
+                rate_limit: null,
+                additional_rate_limits: [
+                  {
+                    limit_name: "Feature",
+                    rate_limit: {
+                      [malformed]: { used_percent: "invalid" },
+                      [valid]: { used_percent: 30, reset_at: 1790812800 },
+                    },
+                  },
+                ],
+              }),
+          ],
+        ]),
+      );
+      expect(findProvider(await service().listUsage(), "codex")).toMatchObject({
+        status: "available",
+        windows: [
+          {
+            id,
+            label,
+            usedPct: 30,
+            remainingPct: 70,
+            resetsAt: "2026-10-01T00:00:00.000Z",
+            tone: "ok",
+          },
+        ],
+        balances: [],
+      });
+    },
+  );
+
+  it.each([
+    {
+      windowReset: 1e20,
+      budgetReset: 1790812800,
+      expectedWindow: null,
+      expectedBudget: "2026-10-01T00:00:00.000Z",
+    },
+    {
+      windowReset: -1e20,
+      budgetReset: 1790812800,
+      expectedWindow: null,
+      expectedBudget: "2026-10-01T00:00:00.000Z",
+    },
+    {
+      windowReset: Number.MAX_VALUE,
+      budgetReset: 1790812800,
+      expectedWindow: null,
+      expectedBudget: "2026-10-01T00:00:00.000Z",
+    },
+    {
+      windowReset: 1790812800,
+      budgetReset: 1e20,
+      expectedWindow: "2026-10-01T00:00:00.000Z",
+      expectedBudget: null,
+    },
+    {
+      windowReset: 1790812800,
+      budgetReset: -1e20,
+      expectedWindow: "2026-10-01T00:00:00.000Z",
+      expectedBudget: null,
+    },
+    {
+      windowReset: 1790812800,
+      budgetReset: Number.MAX_VALUE,
+      expectedWindow: "2026-10-01T00:00:00.000Z",
+      expectedBudget: null,
+    },
+  ])(
+    "keeps Codex usage with out-of-range reset epochs: %j",
+    async ({ windowReset, budgetReset, expectedWindow, expectedBudget }) => {
+      writeCodexAuth(codexHome, "at_codex_valid");
+      fetchApi = mockFetch(
+        new Map([
+          [
+            "https://chatgpt.com/backend-api/wham/usage",
+            () =>
+              jsonResponse({
+                plan_type: "business",
+                rate_limit: null,
+                additional_rate_limits: [
+                  {
+                    limit_name: "Feature",
+                    rate_limit: {
+                      primary_window: { used_percent: 30, reset_at: windowReset },
+                      secondary_window: { used_percent: 20, reset_at: 1790812800 },
+                    },
+                  },
+                ],
+                spend_control: {
+                  individual_limit: {
+                    used: "20",
+                    remaining: "80",
+                    limit: "100",
+                    reset_at: budgetReset,
+                  },
+                },
+              }),
+          ],
+        ]),
+      );
+      expect(findProvider(await service().listUsage(), "codex")).toMatchObject({
+        status: "available",
+        error: null,
+        windows: [
+          {
+            id: "session_name:Feature",
+            label: "Session · Feature",
+            usedPct: 30,
+            remainingPct: 70,
+            resetsAt: expectedWindow,
+            tone: "ok",
+          },
+          {
+            id: "weekly_name:Feature",
+            label: "Weekly · Feature",
+            usedPct: 20,
+            remainingPct: 80,
+            resetsAt: "2026-10-01T00:00:00.000Z",
+            tone: "ok",
+          },
+        ],
+        balances: [
+          {
+            id: "spend",
+            label: "Spend",
+            used: 20,
+            remaining: 80,
+            limit: 100,
+            unit: "credits",
+            resetsAt: expectedBudget,
+            tone: "ok",
+          },
+        ],
+      });
+    },
+  );
+
+  it.each(["metered_feature", "limit_name"])(
+    "keeps Codex feature identities across refreshes using %s",
+    async (identity) => {
+      writeCodexAuth(codexHome, "at_codex_valid");
+      const rateLimit = { primary_window: { used_percent: 30, reset_at: 1790812800 } };
+      const alpha = { [identity]: "alpha", rate_limit: rateLimit };
+      const beta = { [identity]: "beta", rate_limit: rateLimit };
+      const gamma = { [identity]: "gamma", rate_limit: rateLimit };
+      let features = [alpha, beta];
+      fetchApi = mockFetch(
+        new Map([
+          [
+            "https://chatgpt.com/backend-api/wham/usage",
+            () =>
+              jsonResponse({
+                plan_type: "business",
+                rate_limit: null,
+                additional_rate_limits: features,
+              }),
+          ],
+        ]),
+      );
+      const usage = service();
+      const initial = findProvider(await usage.listUsage(), "codex").windows;
+      expect(initial).toHaveLength(2);
+      features = [beta, alpha];
+      expect(findProvider(await usage.listUsage({ forceRefresh: true }), "codex").windows).toEqual([
+        initial[1],
+        initial[0],
+      ]);
+      features = [gamma, beta, alpha];
+      expect(
+        findProvider(await usage.listUsage({ forceRefresh: true }), "codex").windows.slice(1),
+      ).toEqual([initial[1], initial[0]]);
+      features = [alpha];
+      expect(findProvider(await usage.listUsage({ forceRefresh: true }), "codex").windows).toEqual([
+        initial[0],
+      ]);
+    },
+  );
+
+  it("keeps Codex feature keys unique for duplicate and absent identities", async () => {
+    writeCodexAuth(codexHome, "at_codex_valid");
+    const rateLimit = { primary_window: { used_percent: 30, reset_at: 1790812800 } };
+    fetchApi = mockFetch(
+      new Map([
+        [
+          "https://chatgpt.com/backend-api/wham/usage",
+          () =>
+            jsonResponse({
+              plan_type: "business",
+              rate_limit: null,
+              additional_rate_limits: [
+                { metered_feature: "a", rate_limit: rateLimit },
+                { metered_feature: "a", rate_limit: rateLimit },
+                { metered_feature: "a:2", rate_limit: rateLimit },
+                { metered_feature: "a%3A2", rate_limit: rateLimit },
+                { metered_feature: "\ud800", rate_limit: rateLimit },
+                { limit_name: "a", rate_limit: rateLimit },
+                { rate_limit: rateLimit },
+                { rate_limit: rateLimit },
+              ],
+            }),
+        ],
+      ]),
+    );
+    expect(
+      findProvider(await service().listUsage(), "codex").windows.map((window) => window.id),
+    ).toEqual([
+      "session_metered:a",
+      "session_metered:a:2",
+      "session_metered:a%3A2",
+      "session_metered:a%253A2",
+      "session_metered:\ud800",
+      "session_name:a",
+      "session_anonymous:6",
+      "session_anonymous:7",
+    ]);
+  });
+
   it("keeps valid Codex feature windows and budget beside a malformed feature", async () => {
     writeCodexAuth(codexHome, "at_codex_valid");
     fetchApi = mockFetch(
@@ -874,7 +1116,7 @@ describe("real provider usage fetchers", () => {
       status: "available",
       windows: [
         {
-          id: "session_1",
+          id: "session_name:Feature",
           label: "Session · Feature",
           usedPct: 30,
           remainingPct: 70,
@@ -950,12 +1192,12 @@ describe("real provider usage fetchers", () => {
       planLabel: "business",
       windows: [
         expect.objectContaining({
-          id: "session_0",
+          id: "session_metered:codex_bengalfox",
           label: "Session · GPT-5.3-Codex-Spark-Preview",
           usedPct: 5,
         }),
         expect.objectContaining({
-          id: "weekly_0",
+          id: "weekly_metered:codex_bengalfox",
           label: "Weekly · GPT-5.3-Codex-Spark-Preview",
           usedPct: 12,
         }),
@@ -1007,8 +1249,8 @@ describe("real provider usage fetchers", () => {
 
     expect(codex.windows?.map((window) => window.id)).toEqual([
       "code_review",
-      "session_0",
-      "weekly_0",
+      "session_name:GPT-5.3-Codex-Spark-Preview",
+      "weekly_name:GPT-5.3-Codex-Spark-Preview",
     ]);
   });
 
