@@ -25,7 +25,12 @@ export interface RegisteredPluginButton {
   context: PluginButtonContext;
   button: ResolvedPluginButton;
   pending: boolean;
-  open: boolean;
+  /**
+   * The rendered control whose popover is open, or null. One registration renders wherever its
+   * composer or header is mounted, hidden copies included. Only the control that was pressed may
+   * open: a hidden copy has no measurable trigger, so its popover lands at the window's corner.
+   */
+  openIn: string | null;
 }
 
 function resolveAction(
@@ -108,7 +113,7 @@ export class PluginButtonStore {
         context,
         button: initialButton,
         pending: false,
-        open: false,
+        openIn: null,
       },
     ]);
     const unsubscribe = installation.i18n.subscribe(() => {
@@ -124,7 +129,7 @@ export class PluginButtonStore {
         const button = validateButton(nextSource, this.validation, installation.i18n.resolve);
         sourceButton = nextSource;
         const close = !button.visible || button.disabled || patch.behavior !== undefined;
-        this.replace(key, { button, open: close ? false : entry.open });
+        this.replace(key, { button, openIn: close ? null : entry.openIn });
       },
       remove: () => {
         unsubscribe();
@@ -134,11 +139,16 @@ export class PluginButtonStore {
     };
   }
 
-  setOpen(key: number, open: boolean): void {
+  /** `control` identifies the rendered control that opens or closes; others stay closed. */
+  setOpen(key: number, control: string, open: boolean): void {
     const entry = this.entries.find((candidate) => candidate.key === key);
     if (!entry) return;
-    if (open && (!entry.button.visible || entry.button.disabled || entry.pending)) return;
-    this.replace(key, { open });
+    if (open) {
+      if (!entry.button.visible || entry.button.disabled || entry.pending) return;
+      this.replace(key, { openIn: control });
+    } else if (entry.openIn === control) {
+      this.replace(key, { openIn: null });
+    }
   }
 
   async run(key: number, path: readonly string[] = []): Promise<void> {
@@ -156,7 +166,7 @@ export class PluginButtonStore {
 
   private replace(
     key: number,
-    patch: Partial<Pick<RegisteredPluginButton, "button" | "open" | "pending">>,
+    patch: Partial<Pick<RegisteredPluginButton, "button" | "openIn" | "pending">>,
   ): void {
     if (!this.entries.some((entry) => entry.key === key)) return;
     this.publish(this.entries.map((entry) => (entry.key === key ? { ...entry, ...patch } : entry)));

@@ -70,10 +70,10 @@ describe("plugin buttons", () => {
     expect(buttonMatches(buttons.getSnapshot()[1], "host-a", "workspace", "other-agent")).toBe(
       false,
     );
-    buttons.setOpen(first.key, true);
+    buttons.setOpen(first.key, "control", true);
     header.update({ visible: false, label: "3 reviews" });
     expect(buttonMatches(buttons.getSnapshot()[0], "host-a", "workspace", null)).toBe(false);
-    expect(buttons.getSnapshot()[0].open).toBe(false);
+    expect(buttons.getSnapshot()[0].openIn).toBeNull();
     header.update({ visible: true });
     expect(buttons.getSnapshot().map((entry) => entry.key)).toEqual([first.key, first.key + 1]);
     expect(buttons.getSnapshot()[0].button.label).toBe("3 reviews");
@@ -178,6 +178,24 @@ describe("plugin buttons", () => {
   });
 });
 
+it("opens only the control that was pressed when one button renders in several places", () => {
+  const buttons = store();
+  buttons.addComposerPill(installation(), {
+    id: "ideas",
+    workspaceId: "workspace",
+    agentId: "agent",
+    button: button(),
+  });
+  const { key } = buttons.getSnapshot()[0];
+  buttons.setOpen(key, "visible-composer", true);
+  expect(buttons.getSnapshot()[0].openIn).toBe("visible-composer");
+  // A hidden copy of the same composer neither opens nor closes it.
+  buttons.setOpen(key, "hidden-composer", false);
+  expect(buttons.getSnapshot()[0].openIn).toBe("visible-composer");
+  buttons.setOpen(key, "visible-composer", false);
+  expect(buttons.getSnapshot()[0].openIn).toBeNull();
+});
+
 it("updates translated tooltips and nested menu labels without closing open content", () => {
   let locale = "en";
   const listeners = new Set<() => void>();
@@ -219,12 +237,12 @@ it("updates translated tooltips and nested menu labels without closing open cont
     },
   });
   const original = buttons.getSnapshot()[0];
-  buttons.setOpen(original.key, true);
+  buttons.setOpen(original.key, "control", true);
   locale = "zh-CN";
   for (const listener of listeners) listener();
   const translated = buttons.getSnapshot()[0];
   expect(translated.key).toBe(original.key);
-  expect(translated.open).toBe(true);
+  expect(translated.openIn).toBe("control");
   expect(translated.button.title).toBe("笔记");
   expect(translated.button.behavior).toMatchObject({
     kind: "menu",
